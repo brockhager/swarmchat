@@ -8,7 +8,7 @@ export default function ChatDemo() {
   const [message, setMessage] = useState('')
   const [status, setStatus] = useState<string | null>(null)
 
-  const [messages, setMessages] = useState<Array<{id: string; sender?: string; body: string; ts?: number}>>([])
+  const [messages, setMessages] = useState<Array<{id: string; txnId?: string; sender?: string; body: string; ts?: number; status?: 'pending'|'sent'|'failed'}>>([])
   const timelineListenerRef = useRef<Function | null>(null)
   const messagesContainerRef = useRef<HTMLDivElement | null>(null)
 
@@ -113,7 +113,18 @@ export default function ChatDemo() {
         setMessages(prev => {
           // Avoid duplicates by event id
           if (prev.find(m => m.id === normalized.id)) return prev
-          return [...prev, normalized]
+
+          // If a pending optimistic message exists that matches this event (same sender/body and recent), upgrade it
+          const now = Date.now()
+          const pendingIdx = prev.findIndex(m => m.status === 'pending' && m.sender === normalized.sender && (m.body || '').trim() === (normalized.body || '').trim() && (now - (m.ts || now) < 30_000))
+          if (pendingIdx !== -1) {
+            const copy = [...prev]
+            // Replace pending message id with server event id and mark sent
+            copy[pendingIdx] = {...copy[pendingIdx], id: normalized.id, status: 'sent', ts: normalized.ts ?? copy[pendingIdx].ts}
+            return copy
+          }
+
+          return [...prev, {...normalized, status: 'sent'}]
         })
       } catch (_) {}
     }
@@ -138,16 +149,29 @@ export default function ChatDemo() {
   const sendMessage = async () => {
     if (!client || !selectedRoom) return
     if (!message.trim()) return
+
+    // Create a unique transaction id for optimistic UI
+    const txnId = `txn-${Date.now()}-${Math.random().toString(36).slice(2,8)}`
+    const now = Date.now()
+    const optimistic = { id: txnId, txnId, sender: userId || 'me', body: message, ts: now, status: 'pending' as const }
+
+    // add optimistic message to the timeline immediately
+    setMessages(prev => [...prev, optimistic])
+    setMessage('')
+    setStatus('Sending…')
+
     try {
-      setStatus('Sending…')
-      const txnId = `m-${Date.now()}`
-      const content = {msgtype: 'm.text', body: message}
-      // Use sendEvent (some versions of the SDK have helpers like sendMessageEvent)
-      await (client as any).sendEvent(selectedRoom, 'm.room.message', content, txnId)
-      setMessage('')
+      const content = {msgtype: 'm.text', body: optimistic.body}
+      // sendEvent should return the server event id on success
+      const eventId = await (client as any).sendEvent(selectedRoom, 'm.room.message', content, txnId)
+
+      // Update the optimistic message into a confirmed one
+      setMessages(prev => prev.map(m => (m.txnId === txnId || m.id === txnId) ? {...m, id: (eventId as string) ?? m.id, status: 'sent'} : m))
       setStatus('Sent')
       setTimeout(() => setStatus(null), 1200)
     } catch (err) {
+      // mark the message as failed
+      setMessages(prev => prev.map(m => (m.txnId === txnId || m.id === txnId) ? {...m, status: 'failed'} : m))
       setStatus('Send failed: ' + (err && (err as Error).message))
     }
   }
@@ -228,7 +252,10 @@ export default function ChatDemo() {
           ) : (
             messages.map(m => (
               <div key={m.id} style={{padding: 8, borderRadius: 6, background: m.sender === userId ? '#eaffea' : '#f9f9ff', marginBottom: 6}}>
-                <div style={{fontSize: 12, color: '#333', fontWeight: 600}}>{m.sender || 'unknown'}</div>
+                <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                  <div style={{fontSize: 12, color: '#333', fontWeight: 600}}>{m.sender || 'unknown'}</div>
+                  <div style={{fontSize: 11, color: m.status === 'failed' ? 'crimson' : m.status === 'pending' ? '#b07a00' : '#3b7' }}>{m.status ? (m.status === 'pending' ? 'Sending…' : m.status === 'failed' ? 'Failed' : 'Sent') : ''}</div>
+                </div>
                 <div style={{fontSize: 14, marginTop: 6}}>{m.body}</div>
                 <div style={{fontSize: 11, color: '#777', marginTop: 6}}>{m.ts ? new Date(m.ts).toLocaleString() : ''}</div>
               </div>
