@@ -6,9 +6,11 @@ import './App.css';
 import useMatrixClient from './hooks/useMatrixClient';
 import ChatDemo from './components/ChatDemo';
 import AuthForm from './components/AuthForm';
+import BlockManager from './components/BlockManager';
 
 const App: React.FC = () => {
   const [showLogs, setShowLogs] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const { connectionState, isAuthenticated } = useMatrixClient({ autoConnect: true, requiredPort: true });
 
   return (
@@ -24,13 +26,18 @@ const App: React.FC = () => {
           >
             {showLogs ? 'Hide Logs' : 'Show Logs'}
           </button>
+          <button onClick={() => setShowSettings(s => !s)} style={{marginLeft: 8}}>
+            {showSettings ? 'Close Settings' : 'Settings'}
+          </button>
         </div>
       </header>
 
       <main className="app-main-content">
         <ConnectionGate />
         <p>Welcome to SwarmChat. Decentralized chat content goes here.</p>
-        {isAuthenticated ? (
+        {showSettings ? (
+          <BlockManager />
+        ) : isAuthenticated ? (
           <ChatDemo />
         ) : (
           <div style={{padding: 8}}>
