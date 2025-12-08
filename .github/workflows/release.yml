@@ -1,0 +1,56 @@
+name: Release / Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    env:
+      TAURI_BUILD: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare sidecar
+        run: |
+          echo "Preparing sidecar for runner: $RUNNER_OS"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            powershell -c .\\scripts\\ci-copy-sidecar.ps1 -Target windows
+          else
+            bash ./scripts/ci-copy-sidecar.sh ${{ matrix.os }} || true
+          fi
+
+      - name: Build front-end
+        run: npm run build || true
+
+      - name: Tauri build
+        uses: tauri-apps/tauri-action@v2
+        with:
+          release: true
+
+      - name: List packaged artifacts (for debugging)
+        run: |
+          echo "--- bundle output ---"
+          ls -la src-tauri/target/release/bundle || true
+
+      - name: Smoke test placeholder
+        run: |
+          echo "Smoke test placeholder: add tests that validate the packaged app and sidecar start."
