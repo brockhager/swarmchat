@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react'
+import React, {useEffect, useState, useRef} from 'react'
 import useMatrixClient from '../hooks/useMatrixClient'
 
 export default function ChatDemo() {
@@ -7,6 +7,10 @@ export default function ChatDemo() {
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [status, setStatus] = useState<string | null>(null)
+
+  const [messages, setMessages] = useState<Array<{id: string; sender?: string; body: string; ts?: number}>>([])
+  const timelineListenerRef = useRef<Function | null>(null)
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!client) return
@@ -43,6 +47,94 @@ export default function ChatDemo() {
     }
   }, [client])
 
+  // When the selected room changes, load recent history and attach a Room.timeline listener
+  useEffect(() => {
+    if (!client || !selectedRoom) {
+      setMessages([])
+      return
+    }
+
+    let cancelled = false
+
+    const normalizeEvent = (ev: any) => {
+      // SDK events may expose getContent/getSender/getTs or have content/sender/timestamp directly
+      const getContent = ev?.getContent ? ev.getContent() : ev?.content
+      const sender = ev?.getSender ? ev.getSender() : ev?.sender
+      const eventId = ev?.getId ? ev.getId() : ev?.event_id ?? String(Math.random())
+      const ts = ev?.getTs ? ev.getTs() : ev?.origin_server_ts
+      const body = getContent?.body ?? String(getContent ?? '')
+      return {id: eventId, sender, body, ts}
+    }
+
+    const loadHistory = async () => {
+      try {
+        setStatus('Loading room history...')
+
+        // Try to use an SDK-provided scrollback/back-pagination helper first
+        try {
+          await (client as any).scrollback?.(selectedRoom, 30)
+        } catch (_) {
+          // not all SDK versions expose scrollback, it's a best-effort call
+        }
+
+        // Now read the in-memory timeline events for the room and convert them into our messages list
+        const room = (client as any).getRoom ? (client as any).getRoom(selectedRoom) : null
+        let events: any[] = []
+        if (room) {
+          // room may expose .getLiveTimeline().getEvents() or .timeline
+          const live = room.getLiveTimeline ? room.getLiveTimeline() : null
+          if (live && live.getEvents) events = live.getEvents()
+          else if (room.timeline) events = room.timeline
+          else if (room.getTimeline) events = room.getTimeline()
+        }
+
+        // Convert to a simple list of message-like objects and keep them chronological (oldest first)
+        const converted = (events || []).filter(e => {
+          const t = e?.getType ? e.getType() : e?.type
+          return t === 'm.room.message'
+        }).map(e => normalizeEvent(e)).reverse()
+
+        if (!cancelled) {
+          setMessages(converted)
+          setStatus(null)
+        }
+      } catch (err) {
+        if (!cancelled) setStatus('Failed to load history: ' + (err && (err as Error).message))
+      }
+    }
+
+    // timeline handler appends new message events live
+    const onTimeline = (event: any, roomObj: any, toStartOfTimeline: boolean, removed: any, data: any) => {
+      try {
+        const ev = event
+        const type = ev?.getType ? ev.getType() : ev?.type
+        if (type !== 'm.room.message') return
+        const normalized = normalizeEvent(ev)
+        setMessages(prev => {
+          // Avoid duplicates by event id
+          if (prev.find(m => m.id === normalized.id)) return prev
+          return [...prev, normalized]
+        })
+      } catch (_) {}
+    }
+
+    // Attach timeline listener
+    (client as any).on && (client as any).on('Room.timeline', onTimeline)
+    timelineListenerRef.current = onTimeline
+
+    loadHistory()
+
+    return () => {
+      cancelled = true
+      // detach timeline listener
+      const listener = timelineListenerRef.current
+      if (listener) {
+        ;(client as any).removeListener && (client as any).removeListener('Room.timeline', listener)
+        timelineListenerRef.current = null
+      }
+    }
+  }, [client, selectedRoom])
+
   const sendMessage = async () => {
     if (!client || !selectedRoom) return
     if (!message.trim()) return
@@ -59,6 +151,16 @@ export default function ChatDemo() {
       setStatus('Send failed: ' + (err && (err as Error).message))
     }
   }
+
+  // scroll to bottom when new messages are appended
+  useEffect(() => {
+    const el = messagesContainerRef.current
+    if (!el) return
+    // wait to allow rendering
+    setTimeout(() => {
+      try { el.scrollTop = el.scrollHeight } catch (_) {}
+    }, 40)
+  }, [messages])
 
   if (connectionState !== 'connected') {
     return (
@@ -119,6 +221,20 @@ export default function ChatDemo() {
         </div>
 
         {status && <div style={{marginTop: 8, fontSize: 13}}>{status}</div>}
+
+        <div style={{marginTop: 12, border: '1px solid #eee', borderRadius: 8, padding: 8, maxHeight: 260, overflow: 'auto'}} ref={messagesContainerRef}>
+          {messages.length === 0 ? (
+            <div style={{color: '#888'}}>No messages for this room yet — send one to seed the timeline.</div>
+          ) : (
+            messages.map(m => (
+              <div key={m.id} style={{padding: 8, borderRadius: 6, background: m.sender === userId ? '#eaffea' : '#f9f9ff', marginBottom: 6}}>
+                <div style={{fontSize: 12, color: '#333', fontWeight: 600}}>{m.sender || 'unknown'}</div>
+                <div style={{fontSize: 14, marginTop: 6}}>{m.body}</div>
+                <div style={{fontSize: 11, color: '#777', marginTop: 6}}>{m.ts ? new Date(m.ts).toLocaleString() : ''}</div>
+              </div>
+            ))
+          )}
+        </div>
 
         <div style={{marginTop: 16, color: '#666', fontSize: 13}}>
           This is a tiny demo to validate the end-to-end stack — it lists rooms from the logged-in account and
