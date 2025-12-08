@@ -5,10 +5,11 @@ import useConnectionMonitor from './hooks/useConnectionMonitor';
 import './App.css';
 import useMatrixClient from './hooks/useMatrixClient';
 import ChatDemo from './components/ChatDemo';
+import AuthForm from './components/AuthForm';
 
 const App: React.FC = () => {
   const [showLogs, setShowLogs] = useState(false);
-  const { connectionState } = useMatrixClient({ autoConnect: true, requiredPort: true });
+  const { connectionState, isAuthenticated } = useMatrixClient({ autoConnect: true, requiredPort: true });
 
   return (
     <div className="app-layout">
@@ -29,10 +30,13 @@ const App: React.FC = () => {
       <main className="app-main-content">
         <ConnectionGate />
         <p>Welcome to SwarmChat. Decentralized chat content goes here.</p>
-        {connectionState === 'connected' ? (
+        {isAuthenticated ? (
           <ChatDemo />
         ) : (
-          <div style={{padding: 8, color: '#666'}}>Matrix client not connected — wait for node readiness above to show the chat demo.</div>
+          <div style={{padding: 8}}>
+            <div style={{color: '#666', marginBottom: 8}}>You need to sign in to use the chat demo.</div>
+            <AuthForm />
+          </div>
         )}
         {!showLogs && <p>Click "Show Logs" to view your local node status.</p>}
       </main>

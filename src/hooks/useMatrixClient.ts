@@ -34,6 +34,7 @@ export default function useMatrixClient({
   const [userId, setUserId] = useState<string | null>(null);
   const [state, setState] = useState<MatrixConnectionState>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const mounted = useRef(true);
 
@@ -65,6 +66,20 @@ export default function useMatrixClient({
     }
     // initialize a real matrix client using matrix-js-sdk
     try {
+      // Check persisted tokens in localStorage first
+      const storedToken = typeof window !== 'undefined' ? window.localStorage.getItem('swarmchat_access_token') : null
+      const storedUser = typeof window !== 'undefined' ? window.localStorage.getItem('swarmchat_user_id') : null
+      if (storedToken && storedUser) {
+        const c = createClient({ baseUrl, accessToken: storedToken, userId: storedUser });
+        try { c.startClient(); } catch (_) {}
+        if (mounted.current) {
+          setClient(c);
+          setUserId(storedUser);
+          setState('connected');
+          setIsAuthenticated(true);
+        }
+        return c as MatrixClientStub;
+      }
       // if we have access token + userId, construct a direct client
       if (auth?.accessToken && auth?.userId) {
         const c = createClient({ baseUrl, accessToken: auth.accessToken, userId: auth.userId });
@@ -73,6 +88,7 @@ export default function useMatrixClient({
         if (mounted.current) {
           setClient(c);
           setUserId((c as any).getUserId ? (c as any).getUserId() : (c as any).credentials?.userId ?? null);
+          setIsAuthenticated(true);
           setState('connected');
         }
         return c as MatrixClientStub;
@@ -91,6 +107,7 @@ export default function useMatrixClient({
         if (mounted.current) {
           setClient(c);
           setUserId((c as any).getUserId ? (c as any).getUserId() : (c as any).credentials?.userId ?? null);
+          setIsAuthenticated(true);
           setState('connected');
         }
         return c as MatrixClientStub;
@@ -102,6 +119,8 @@ export default function useMatrixClient({
       if (mounted.current) {
         setClient(anon as MatrixClientStub);
         setUserId((anon as any).getUserId ? (anon as any).getUserId() : (anon as any).credentials?.userId ?? null);
+        // No auth in this case
+        setIsAuthenticated(false);
         setState('connected');
       }
       return anon as MatrixClientStub;
@@ -122,7 +141,79 @@ export default function useMatrixClient({
     }
     setClient(null);
     setUserId(null);
+    setIsAuthenticated(false);
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem('swarmchat_access_token')
+        window.localStorage.removeItem('swarmchat_user_id')
+      }
+    } catch (_) {}
   }, [client]);
+
+  // login and register helpers exposed to the UI
+  const login = useCallback(async (username?: string, password?: string) => {
+    setError(null);
+    if (!monitor.clientPort) {
+      setError('no-port');
+      return null;
+    }
+    const baseUrl = `http://127.0.0.1:${monitor.clientPort}`
+    try {
+      setState('connecting');
+      const temp = createClient({ baseUrl });
+      const res = await (temp as any).login('m.login.password', { user: username, password });
+      const accessToken = (res as any).access_token
+      const uid = (res as any).user_id
+      if (!accessToken || !uid) throw new Error('login_failed')
+      // persist and create the real client
+      try { if (typeof window !== 'undefined') { window.localStorage.setItem('swarmchat_access_token', accessToken); window.localStorage.setItem('swarmchat_user_id', uid) } } catch (_) {}
+      const c = createClient({ baseUrl, accessToken, userId: uid })
+      try { c.startClient(); } catch (_) {}
+      if (mounted.current) {
+        setClient(c);
+        setUserId(uid);
+        setIsAuthenticated(true);
+        setState('connected');
+      }
+      return c as MatrixClientStub;
+    } catch (e: any) {
+      setState('error');
+      setError(String(e?.message ?? e))
+      return null;
+    }
+  }, [monitor.clientPort]);
+
+  const register = useCallback(async (username?: string, password?: string) => {
+    setError(null);
+    if (!monitor.clientPort) {
+      setError('no-port');
+      return null;
+    }
+    const baseUrl = `http://127.0.0.1:${monitor.clientPort}`
+    try {
+      setState('connecting');
+      const temp = createClient({ baseUrl });
+      // Some homeservers may require registration flows; this tries the simple path
+      const res = await (temp as any).register({ username, password, inhibit_login: false });
+      const accessToken = (res as any).access_token
+      const uid = (res as any).user_id
+      if (!accessToken || !uid) throw new Error('register_failed')
+      try { if (typeof window !== 'undefined') { window.localStorage.setItem('swarmchat_access_token', accessToken); window.localStorage.setItem('swarmchat_user_id', uid) } } catch (_) {}
+      const c = createClient({ baseUrl, accessToken, userId: uid })
+      try { c.startClient(); } catch (_) {}
+      if (mounted.current) {
+        setClient(c);
+        setUserId(uid);
+        setIsAuthenticated(true);
+        setState('connected');
+      }
+      return c as MatrixClientStub;
+    } catch (e: any) {
+      setState('error');
+      setError(String(e?.message ?? e))
+      return null;
+    }
+  }, [monitor.clientPort]);
 
   // When monitor becomes ready, automatically connect (if enabled)
   useEffect(() => {
@@ -160,10 +251,13 @@ export default function useMatrixClient({
   return {
     client,
     userId,
+    isAuthenticated,
     connectionState: state,
     connectionError: error,
     connect,
     disconnect,
+    login,
+    register,
     monitor,
   } as const;
 }
