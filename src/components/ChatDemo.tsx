@@ -8,7 +8,7 @@ export default function ChatDemo() {
   const [message, setMessage] = useState('')
   const [status, setStatus] = useState<string | null>(null)
 
-  const [messages, setMessages] = useState<Array<{id: string; txnId?: string; sender?: string; body: string; ts?: number; status?: 'pending'|'sent'|'failed'}>>([])
+  const [messages, setMessages] = useState<Array<{id: string; txnId?: string; sender?: string; body: string; ts?: number; status?: 'pending'|'sent'|'failed'; receipts?: string[]}>>([])
   const timelineListenerRef = useRef<Function | null>(null)
   const messagesContainerRef = useRef<HTMLDivElement | null>(null)
 
@@ -176,6 +176,28 @@ export default function ChatDemo() {
     }
   }
 
+  // Retry a failed message by finding it and re-sending its body with a fresh txnId.
+  const retrySend = async (idOrTxn?: string) => {
+    if (!client || !selectedRoom) return
+    const msg = messages.find(m => m.id === idOrTxn || m.txnId === idOrTxn)
+    if (!msg) return
+
+    const txnId = `retry-${Date.now()}-${Math.random().toString(36).slice(2,8)}`
+    setMessages(prev => prev.map(m => (m.id === msg.id || m.txnId === msg.txnId) ? {...m, status: 'pending', txnId, ts: Date.now()} : m))
+    setStatus('Retrying…')
+
+    try {
+      const content = {msgtype: 'm.text', body: msg.body}
+      const eventId = await (client as any).sendEvent(selectedRoom, 'm.room.message', content, txnId)
+      setMessages(prev => prev.map(m => (m.txnId === txnId || m.id === txnId) ? {...m, id: (eventId as string) ?? m.id, status: 'sent'} : m))
+      setStatus('Sent')
+      setTimeout(() => setStatus(null), 800)
+    } catch (e: any) {
+      setMessages(prev => prev.map(m => (m.txnId === txnId || m.id === txnId) ? {...m, status: 'failed'} : m))
+      setStatus('Retry failed: ' + (e && (e as Error).message))
+    }
+  }
+
   // scroll to bottom when new messages are appended
   useEffect(() => {
     const el = messagesContainerRef.current
@@ -185,6 +207,48 @@ export default function ChatDemo() {
       try { el.scrollTop = el.scrollHeight } catch (_) {}
     }, 40)
   }, [messages])
+
+  // Poll for read receipts for sent events and annotate messages with receipts (small UX feature)
+  useEffect(() => {
+    if (!client || !selectedRoom) return
+
+    let cancelled = false
+
+    const poll = async () => {
+      try {
+        const room = (client as any).getRoom ? (client as any).getRoom(selectedRoom) : null
+        for (const m of messages) {
+          if (cancelled) break
+          if (!m.id || String(m.id).startsWith('txn-') || m.status !== 'sent') continue
+          try {
+            let receipts: string[] = []
+            if ((client as any).getEventReceipts) {
+              const res = await (client as any).getEventReceipts(selectedRoom, m.id)
+              // Flatten structure
+              if (res && typeof res === 'object') {
+                for (const t of Object.keys(res)) {
+                  for (const u of Object.keys(res[t] || {})) receipts.push(u)
+                }
+              }
+            } else if (room && room.getReceiptsForEvent) {
+              const res = room.getReceiptsForEvent(m.id)
+              if (res && typeof res === 'object') {
+                for (const uid of Object.keys(res || {})) receipts.push(uid)
+              }
+            }
+
+            if (!cancelled && receipts.length) {
+              setMessages(prev => prev.map(x => x.id === m.id ? {...x, receipts} : x))
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }
+
+    poll()
+    const t = setInterval(poll, 5000)
+    return () => { cancelled = true; clearInterval(t) }
+  }, [client, selectedRoom, messages])
 
   if (connectionState !== 'connected') {
     return (
@@ -252,9 +316,18 @@ export default function ChatDemo() {
           ) : (
             messages.map(m => (
               <div key={m.id} style={{padding: 8, borderRadius: 6, background: m.sender === userId ? '#eaffea' : '#f9f9ff', marginBottom: 6}}>
-                <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8}}>
                   <div style={{fontSize: 12, color: '#333', fontWeight: 600}}>{m.sender || 'unknown'}</div>
-                  <div style={{fontSize: 11, color: m.status === 'failed' ? 'crimson' : m.status === 'pending' ? '#b07a00' : '#3b7' }}>{m.status ? (m.status === 'pending' ? 'Sending…' : m.status === 'failed' ? 'Failed' : 'Sent') : ''}</div>
+                  <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
+                    <div style={{fontSize: 11, color: m.status === 'failed' ? 'crimson' : m.status === 'pending' ? '#b07a00' : '#3b7' }}>{m.status ? (m.status === 'pending' ? 'Sending…' : m.status === 'failed' ? 'Failed' : 'Sent') : ''}</div>
+                    {m.status === 'failed' && (
+                      <button onClick={() => retrySend(m.id ?? m.txnId)} style={{padding: '4px 8px', borderRadius: 6}}>Retry</button>
+                    )}
+                    {/* receipts: show small count */}
+                    {m.receipts && m.receipts.length > 0 && (
+                      <div style={{fontSize: 11, color: '#666'}}>{m.receipts.length} read</div>
+                    )}
+                  </div>
                 </div>
                 <div style={{fontSize: 14, marginTop: 6}}>{m.body}</div>
                 <div style={{fontSize: 11, color: '#777', marginTop: 6}}>{m.ts ? new Date(m.ts).toLocaleString() : ''}</div>
