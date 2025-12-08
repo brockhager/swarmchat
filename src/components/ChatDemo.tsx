@@ -1,9 +1,11 @@
 import React, {useEffect, useState, useRef} from 'react'
 import useMatrixClient from '../hooks/useMatrixClient'
+import { getBlocked, isBlocked, addBlocked, removeBlocked } from '../utils/blockList'
 
 export default function ChatDemo() {
   const {client, connectionState, userId} = useMatrixClient()
   const [joinedRooms, setJoinedRooms] = useState<Array<{roomId: string; name?: string}>>([])
+  const [blocked, setBlocked] = useState<string[]>(() => getBlocked())
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [status, setStatus] = useState<string | null>(null)
@@ -42,8 +44,14 @@ export default function ChatDemo() {
     }
 
     ;(client as any).on && (client as any).on('Room', onRoom)
+    // storage event so block-list changes in other tabs update this component
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'swarmchat_block_list') setBlocked(getBlocked())
+    }
+    if (typeof window !== 'undefined') window.addEventListener('storage', onStorage)
     return () => {
       ;(client as any).removeListener && (client as any).removeListener('Room', onRoom)
+      if (typeof window !== 'undefined') window.removeEventListener('storage', onStorage)
     }
   }, [client])
 
@@ -150,6 +158,11 @@ export default function ChatDemo() {
     if (!client || !selectedRoom) return
     if (!message.trim()) return
 
+    if (otherIsBlocked) {
+      setStatus('Cannot send — other participant is blocked.')
+      return
+    }
+
     // Create a unique transaction id for optimistic UI
     const txnId = `txn-${Date.now()}-${Math.random().toString(36).slice(2,8)}`
     const now = Date.now()
@@ -174,6 +187,19 @@ export default function ChatDemo() {
       setMessages(prev => prev.map(m => (m.txnId === txnId || m.id === txnId) ? {...m, status: 'failed'} : m))
       setStatus('Send failed: ' + (err && (err as Error).message))
     }
+  }
+
+  // block/unblock helpers
+  const onBlock = (userIdToBlock?: string | null) => {
+    if (!userIdToBlock) return
+    addBlocked(userIdToBlock)
+    setBlocked(getBlocked())
+  }
+
+  const onUnblock = (userIdToUnblock?: string | null) => {
+    if (!userIdToUnblock) return
+    removeBlocked(userIdToUnblock)
+    setBlocked(getBlocked())
   }
 
   // Retry a failed message by finding it and re-sending its body with a fresh txnId.
@@ -208,6 +234,30 @@ export default function ChatDemo() {
     }, 40)
   }, [messages])
 
+  // helper to find the other user id in a DM room (2 members)
+  const getOtherUserId = () => {
+    if (!client || !selectedRoom || !userId) return null
+    const room = (client as any).getRoom ? (client as any).getRoom(selectedRoom) : null
+    if (!room) return null
+    // try various ways to get joined members
+    let members: any[] = []
+    if (room.getJoinedMembers && typeof room.getJoinedMembers === 'function') {
+      try { members = room.getJoinedMembers() } catch (_) { members = [] }
+    } else if (room.getMembers && typeof room.getMembers === 'function') {
+      try { members = room.getMembers() } catch (_) { members = [] }
+    } else if (room.currentState && room.currentState.getMembers) {
+      try { members = room.currentState.getMembers() } catch (_) { members = [] }
+    }
+
+    const ids = members.map(m => m?.userId || m?.user_id || m?.userId || (typeof m === 'string' ? m : null)).filter(Boolean)
+    const others = ids.filter((id: string) => id !== userId)
+    if (others.length === 1) return others[0]
+    return null
+  }
+
+  const otherUserInDM = getOtherUserId()
+  const otherIsBlocked = !!otherUserInDM && isBlocked(otherUserInDM)
+
   // Poll for read receipts for sent events and annotate messages with receipts (small UX feature)
   useEffect(() => {
     if (!client || !selectedRoom) return
@@ -220,6 +270,7 @@ export default function ChatDemo() {
         for (const m of messages) {
           if (cancelled) break
           if (!m.id || String(m.id).startsWith('txn-') || m.status !== 'sent') continue
+          if (isBlocked(m.sender)) continue
           try {
             let receipts: string[] = []
             if ((client as any).getEventReceipts) {
@@ -289,6 +340,21 @@ export default function ChatDemo() {
             ))
           )}
         </div>
+      
+        <div style={{marginTop: 14}}>
+          <h4 style={{margin: '6px 0'}}>Blocked users</h4>
+          {blocked.length === 0 ? (
+            <div style={{fontSize: 12, color: '#666'}}>No blocked users</div>
+          ) : (
+            blocked.map(u => (
+              <div key={u} style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0'}}>
+                <div style={{fontSize: 12}}>{u}</div>
+                <button onClick={() => onUnblock(u)} style={{padding: '4px 8px'}}>Unblock</button>
+              </div>
+            ))
+          )}
+        </div>
+
       </div>
 
       <div style={{flex: 1}}>
@@ -303,10 +369,14 @@ export default function ChatDemo() {
             style={{flex: 1, padding: '8px 10px', borderRadius: 6, border: '1px solid #ccc'}}
             disabled={!selectedRoom}
           />
-          <button onClick={sendMessage} disabled={!selectedRoom || !message.trim()} style={{padding: '8px 12px'}}>
+          <button onClick={sendMessage} disabled={!selectedRoom || !message.trim() || (!!otherIsBlocked)} style={{padding: '8px 12px'}}>
             Send
           </button>
         </div>
+
+        {otherIsBlocked && (
+          <div style={{marginTop: 8, color: 'crimson'}}>You have blocked the other participant in this direct message — un-block them to send messages.</div>
+        )}
 
         {status && <div style={{marginTop: 8, fontSize: 13}}>{status}</div>}
 
@@ -314,7 +384,8 @@ export default function ChatDemo() {
           {messages.length === 0 ? (
             <div style={{color: '#888'}}>No messages for this room yet — send one to seed the timeline.</div>
           ) : (
-            messages.map(m => (
+            // hide messages from blocked users in the timeline
+            messages.filter(m => !m.sender || !isBlocked(m.sender)).map(m => (
               <div key={m.id} style={{padding: 8, borderRadius: 6, background: m.sender === userId ? '#eaffea' : '#f9f9ff', marginBottom: 6}}>
                 <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8}}>
                   <div style={{fontSize: 12, color: '#333', fontWeight: 600}}>{m.sender || 'unknown'}</div>
@@ -322,6 +393,14 @@ export default function ChatDemo() {
                     <div style={{fontSize: 11, color: m.status === 'failed' ? 'crimson' : m.status === 'pending' ? '#b07a00' : '#3b7' }}>{m.status ? (m.status === 'pending' ? 'Sending…' : m.status === 'failed' ? 'Failed' : 'Sent') : ''}</div>
                     {m.status === 'failed' && (
                       <button onClick={() => retrySend(m.id ?? m.txnId)} style={{padding: '4px 8px', borderRadius: 6}}>Retry</button>
+                    )}
+                    {/* allow blocking/unblocking of message sender (client-side) */}
+                    {m.sender && m.sender !== userId && (
+                      isBlocked(m.sender) ? (
+                        <button onClick={() => onUnblock(m.sender)} style={{padding: '4px 8px', borderRadius: 6}}>Unblock</button>
+                      ) : (
+                        <button onClick={() => onBlock(m.sender)} style={{padding: '4px 8px', borderRadius: 6}}>Block</button>
+                      )
                     )}
                     {/* receipts: show small count */}
                     {m.receipts && m.receipts.length > 0 && (
