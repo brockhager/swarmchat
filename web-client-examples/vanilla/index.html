@@ -1,0 +1,116 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SwarmChat Dendrite Logs (Vanilla)</title>
+    <style>
+      body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; }
+      #container { height: 100vh; display:flex; flex-direction:column }
+      #header { padding: 8px; border-bottom: 1px solid #ddd }
+      #console { flex: 1; background: #0b0f14; color: #e6edf3; padding: 12px; font-family: monospace; overflow:auto }
+      .stderr { color: #ff6b6b }
+      .stdout { color: #9ae6b4 }
+    </style>
+  </head>
+  <body>
+    <div id="container">
+      <div id="header" style="display:flex; align-items:center; gap:12px; justify-content:space-between;">
+        <div style="display:flex; align-items:center; gap:8px">
+          <strong>Dendrite logs</strong>
+          <div id="status" style="width:12px;height:12px;border-radius:8px;background:#9aa4b2;margin-left:8px"></div>
+          <div id="statusText" style="font-size:12px;color:#333;margin-left:6px">unknown</div>
+        </div>
+
+        <div style="display:flex; gap:8px;">
+          <button id="startBtn">Start</button>
+          <button id="stopBtn">Stop</button>
+        </div>
+      </div>
+
+      <div id="console"><div id="placeholder">No logs yet — run the app to start Dendrite output.</div></div>
+    </div>
+
+    <script>
+      // This page demonstrates how to listen to Tauri events in vanilla JS
+      (function () {
+        const consoleEl = document.getElementById('console');
+        const placeholder = document.getElementById('placeholder');
+
+        function appendLine(origin, text) {
+          if (placeholder) placeholder.style.display = 'none';
+          const d = document.createElement('div');
+          d.className = origin === 'stderr' ? 'stderr' : 'stdout';
+          const now = new Date();
+          d.textContent = '[' + now.toLocaleTimeString() + '] ' + text;
+          consoleEl.appendChild(d);
+          consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+
+        const statusEl = document.getElementById('status');
+        const statusText = document.getElementById('statusText');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+
+        async function refreshStatus() {
+          try {
+            if (window.__TAURI__ && window.__TAURI__.invoke) {
+              const s = await window.__TAURI__.invoke('status_dendrite');
+              updateStatus(String(s));
+            } else {
+              updateStatus('stopped');
+            }
+          } catch (e) {
+            updateStatus('error');
+          }
+        }
+
+        function updateStatus(s) {
+          if (!statusEl || !statusText) return;
+          statusText.textContent = s;
+          switch (s) {
+            case 'running': statusEl.style.background = '#4caf50'; break;
+            case 'starting': statusEl.style.background = '#f6c84c'; break;
+            case 'error': statusEl.style.background = '#ff6b6b'; break;
+            default: statusEl.style.background = '#9aa4b2'; break;
+          }
+        }
+
+        if (startBtn) startBtn.addEventListener('click', async () => {
+          updateStatus('starting');
+          try { await window.__TAURI__.invoke('start_dendrite'); } catch (_) { updateStatus('error'); }
+          // poll status shortly
+          let tries = 0;
+          while (tries < 20) {
+            await new Promise(r => setTimeout(r, 200));
+            await refreshStatus();
+            if (statusText && statusText.textContent === 'running') break;
+            tries++;
+          }
+        });
+
+        if (stopBtn) stopBtn.addEventListener('click', async () => {
+          updateStatus('stopping');
+          try { await window.__TAURI__.invoke('stop_dendrite'); updateStatus('stopped'); } catch (_) { updateStatus('error'); }
+        });
+
+        // initial probe
+        refreshStatus();
+
+        // Tauri exposes an event API at window.__TAURI__ or via @tauri-apps/api; check the runtime
+        if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.listen) {
+          // using the window API
+          window.__TAURI__.event.listen('dendrite-stdout', (e) => {
+            appendLine('stdout', e.payload);
+          });
+          window.__TAURI__.event.listen('dendrite-stderr', (e) => {
+            appendLine('stderr', e.payload);
+          });
+        } else {
+          // Fallback: if not running inside Tauri, attach to a mock API for dev
+          console.warn('Tauri event API not available. If you are running in the browser, use the @tauri-apps/api event listener instead.');
+        }
+      })();
+    </script>
+  </body>
+</html>
