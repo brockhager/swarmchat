@@ -1,11 +1,13 @@
 import React, {useEffect, useState, useRef} from 'react'
 import useMatrixClient from '../hooks/useMatrixClient'
-import { getBlocked as getBlockedLocal, addBlocked as addBlockedLocal, removeBlocked as removeBlockedLocal, getBlockedFromServer, addBlockedToServer, removeBlockedFromServer } from '../utils/blockList'
+import { getBlocked as getBlockedLocal, addBlocked as addBlockedLocal, removeBlocked as removeBlockedLocal, getBlockedFromServer, addBlockedToServer, removeBlockedFromServer,
+  getMutedFromServer, addMutedToServer, removeMutedFromServer, getMuted, addMuted, removeMuted } from '../utils/blockList'
 
 export default function ChatDemo() {
   const {client, connectionState, userId} = useMatrixClient()
   const [joinedRooms, setJoinedRooms] = useState<Array<{roomId: string; name?: string}>>([])
   const [blocked, setBlocked] = useState<string[]>([])
+    const [muted, setMuted] = useState<string[]>([])
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [status, setStatus] = useState<string | null>(null)
@@ -65,13 +67,17 @@ export default function ChatDemo() {
 
     const load = async () => {
       try {
-        const serverList = await getBlockedFromServer(client)
+        const serverBlockList = await getBlockedFromServer(client)
+        const serverMuteList = await getMutedFromServer(client)
         if (!mounted) return
-        if (serverList && serverList.length) setBlocked(serverList)
+        if (serverBlockList && serverBlockList.length) setBlocked(serverBlockList)
         else setBlocked(getBlockedLocal())
+        if (serverMuteList && serverMuteList.length) setMuted(serverMuteList)
+        else setMuted(getMuted())
       } catch (_) {
         if (!mounted) return
         setBlocked(getBlockedLocal())
+        setMuted(getMuted())
       }
     }
 
@@ -86,6 +92,11 @@ export default function ChatDemo() {
           const content = ev?.getContent ? ev.getContent() : ev?.content ?? ev
           const list = Array.isArray(content?.blocked) ? content.blocked : Array.isArray(content) ? content : []
           setBlocked(list)
+          }
+          if (type === 'io.swarmchat.mute_list' || type === 'm.swarmchat.mute_list') {
+            const content = ev?.getContent ? ev.getContent() : ev?.content ?? ev
+            const list = Array.isArray(content?.muted) ? content.muted : Array.isArray(content) ? content : []
+            setMuted(list)
         }
       } catch (_) {}
     }
@@ -263,6 +274,38 @@ export default function ChatDemo() {
     }
   }
 
+  const onMute = async (userIdToMute?: string | null) => {
+    if (!userIdToMute) return
+    try {
+      if (client) {
+        const list = await addMutedToServer(client, userIdToMute)
+        setMuted(list)
+      } else {
+        addMuted(userIdToMute)
+        setMuted(getMuted())
+      }
+    } catch (_) {
+      addMuted(userIdToMute)
+      setMuted(getMuted())
+    }
+  }
+
+  const onUnmute = async (userIdToUnmute?: string | null) => {
+    if (!userIdToUnmute) return
+    try {
+      if (client) {
+        const list = await removeMutedFromServer(client, userIdToUnmute)
+        setMuted(list)
+      } else {
+        removeMuted(userIdToUnmute)
+        setMuted(getMuted())
+      }
+    } catch (_) {
+      removeMuted(userIdToUnmute)
+      setMuted(getMuted())
+    }
+  }
+
   // Retry a failed message by finding it and re-sending its body with a fresh txnId.
   const retrySend = async (idOrTxn?: string) => {
     if (!client || !selectedRoom) return
@@ -318,6 +361,7 @@ export default function ChatDemo() {
 
   const otherUserInDM = getOtherUserId()
   const otherIsBlocked = !!otherUserInDM && blocked.includes(otherUserInDM)
+  const otherIsMuted = !!otherUserInDM && muted.includes(otherUserInDM)
 
   // Poll for read receipts for sent events and annotate messages with receipts (small UX feature)
   useEffect(() => {
@@ -416,6 +460,20 @@ export default function ChatDemo() {
           )}
         </div>
 
+        <div style={{marginTop: 12}}>
+          <h4 style={{margin: '6px 0'}}>Muted users</h4>
+          {muted.length === 0 ? (
+            <div style={{fontSize: 12, color: '#666'}}>No muted users</div>
+          ) : (
+            muted.map(u => (
+              <div key={u} style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0'}}>
+                <div style={{fontSize: 12}}>{u}</div>
+                <button onClick={() => onUnmute(u)} style={{padding: '4px 8px'}}>Unmute</button>
+              </div>
+            ))
+          )}
+        </div>
+
       </div>
 
       <div style={{flex: 1}}>
@@ -457,11 +515,19 @@ export default function ChatDemo() {
                     )}
                     {/* allow blocking/unblocking of message sender (client-side) */}
                     {m.sender && m.sender !== userId && (
-                      blocked.includes(m.sender) ? (
-                        <button onClick={() => onUnblock(m.sender)} style={{padding: '4px 8px', borderRadius: 6}}>Unblock</button>
-                      ) : (
-                        <button onClick={() => onBlock(m.sender)} style={{padding: '4px 8px', borderRadius: 6}}>Block</button>
-                      )
+                      <>
+                        {blocked.includes(m.sender) ? (
+                          <button onClick={() => onUnblock(m.sender)} style={{padding: '4px 8px', borderRadius: 6}}>Unblock</button>
+                        ) : (
+                          <button onClick={() => onBlock(m.sender)} style={{padding: '4px 8px', borderRadius: 6}}>Block</button>
+                        )}
+
+                        {muted.includes(m.sender) ? (
+                          <button onClick={() => onUnmute(m.sender)} style={{padding: '4px 8px', borderRadius: 6}}>Unmute</button>
+                        ) : (
+                          <button onClick={() => onMute(m.sender)} style={{padding: '4px 8px', borderRadius: 6}}>Mute</button>
+                        )}
+                      </>
                     )}
                     {/* receipts: show small count */}
                     {m.receipts && m.receipts.length > 0 && (

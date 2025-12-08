@@ -3,6 +3,8 @@
 const STORAGE_KEY = 'swarmchat_block_list'
 const ACCOUNT_DATA_EVENT = 'io.swarmchat.block_list'
 
+const MUTE_ACCOUNT_DATA_EVENT = 'io.swarmchat.mute_list'
+
 export function getBlocked(): string[] {
   try {
     if (typeof window === 'undefined') return []
@@ -76,6 +78,79 @@ export async function removeBlockedFromServer(client: any, userId: string): Prom
   if (!userId) return getBlocked()
   const list = (await getBlockedFromServer(client)).filter(x => x !== userId)
   await setBlockedToServer(client, list)
+  return list
+}
+
+// ----- MUTE LIST APIs (server-backed + local fallback) -----
+export function getMuted(): string[] {
+  try {
+    if (typeof window === 'undefined') return []
+    const raw = window.localStorage.getItem('swarmchat_mute_list')
+    if (!raw) return []
+    return JSON.parse(raw) as string[]
+  } catch (_) {
+    return []
+  }
+}
+
+export function isMuted(userId?: string | null) {
+  if (!userId) return false
+  const list = getMuted()
+  return list.includes(userId)
+}
+
+export function addMuted(userId: string) {
+  if (!userId) return
+  const list = getMuted()
+  if (list.includes(userId)) return
+  list.push(userId)
+  try { window.localStorage.setItem('swarmchat_mute_list', JSON.stringify(list)) } catch (_) {}
+}
+
+export function removeMuted(userId: string) {
+  if (!userId) return
+  const list = getMuted().filter(x => x !== userId)
+  try { window.localStorage.setItem('swarmchat_mute_list', JSON.stringify(list)) } catch (_) {}
+}
+
+export async function getMutedFromServer(client?: any): Promise<string[]> {
+  try {
+    if (!client || !client.getAccountData) return getMuted()
+    const ev = (client as any).getAccountData ? (client as any).getAccountData(MUTE_ACCOUNT_DATA_EVENT) : null
+    const content = ev?.getContent ? ev.getContent() : ev?.content ?? ev
+    if (!content) return getMuted()
+    const list = Array.isArray(content?.muted) ? content.muted : Array.isArray(content) ? content : []
+    return list
+  } catch (_) {
+    return getMuted()
+  }
+}
+
+export async function setMutedToServer(client: any, list: string[]): Promise<boolean> {
+  try {
+    if (!client || !client.setAccountData) {
+      try { window.localStorage.setItem('swarmchat_mute_list', JSON.stringify(list)) } catch (_) {}
+      return true
+    }
+    await (client as any).setAccountData(MUTE_ACCOUNT_DATA_EVENT, { muted: list })
+    return true
+  } catch (_) {
+    return false
+  }
+}
+
+export async function addMutedToServer(client: any, userId: string): Promise<string[]> {
+  if (!userId) return getMuted()
+  const list = await getMutedFromServer(client)
+  if (!list.includes(userId)) list.push(userId)
+  await setMutedToServer(client, list)
+  return list
+}
+
+export async function removeMutedFromServer(client: any, userId: string): Promise<string[]> {
+  if (!userId) return getMuted()
+  const list = (await getMutedFromServer(client)).filter(x => x !== userId)
+  await setMutedToServer(client, list)
   return list
 }
 
