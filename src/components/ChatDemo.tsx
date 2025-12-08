@@ -1,11 +1,11 @@
 import React, {useEffect, useState, useRef} from 'react'
 import useMatrixClient from '../hooks/useMatrixClient'
-import { getBlocked, isBlocked, addBlocked, removeBlocked } from '../utils/blockList'
+import { getBlocked as getBlockedLocal, addBlocked as addBlockedLocal, removeBlocked as removeBlockedLocal, getBlockedFromServer, addBlockedToServer, removeBlockedFromServer } from '../utils/blockList'
 
 export default function ChatDemo() {
   const {client, connectionState, userId} = useMatrixClient()
   const [joinedRooms, setJoinedRooms] = useState<Array<{roomId: string; name?: string}>>([])
-  const [blocked, setBlocked] = useState<string[]>(() => getBlocked())
+  const [blocked, setBlocked] = useState<string[]>([])
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [status, setStatus] = useState<string | null>(null)
@@ -44,15 +44,55 @@ export default function ChatDemo() {
     }
 
     ;(client as any).on && (client as any).on('Room', onRoom)
-    // storage event so block-list changes in other tabs update this component
+    // storage event so block-list changes in other tabs update this component (local fallback)
     const onStorage = (e: StorageEvent) => {
-      if (e.key === 'swarmchat_block_list') setBlocked(getBlocked())
+      if (e.key === 'swarmchat_block_list') setBlocked(getBlockedLocal())
     }
     if (typeof window !== 'undefined') window.addEventListener('storage', onStorage)
     return () => {
       ;(client as any).removeListener && (client as any).removeListener('Room', onRoom)
       if (typeof window !== 'undefined') window.removeEventListener('storage', onStorage)
     }
+  }, [client])
+
+  // If a Matrix client is available, try to sync the block list from account data
+  useEffect(() => {
+    let mounted = true
+    if (!client) {
+      setBlocked(getBlockedLocal())
+      return
+    }
+
+    const load = async () => {
+      try {
+        const serverList = await getBlockedFromServer(client)
+        if (!mounted) return
+        if (serverList && serverList.length) setBlocked(serverList)
+        else setBlocked(getBlockedLocal())
+      } catch (_) {
+        if (!mounted) return
+        setBlocked(getBlockedLocal())
+      }
+    }
+
+    load()
+
+    // accountData listener will let us pick up changes from other devices
+    const onAccountData = (ev: any) => {
+      try {
+        const type = ev?.getType ? ev.getType() : ev?.type ?? ev?.event_type
+        if (!type) return
+        if (type === 'io.swarmchat.block_list' || type === 'm.swarmchat.block_list') {
+          const content = ev?.getContent ? ev.getContent() : ev?.content ?? ev
+          const list = Array.isArray(content?.blocked) ? content.blocked : Array.isArray(content) ? content : []
+          setBlocked(list)
+        }
+      } catch (_) {}
+    }
+
+    ;(client as any).on && (client as any).on('accountData', onAccountData)
+
+    return () => { mounted = false; (client as any).removeListener && (client as any).removeListener('accountData', onAccountData) }
   }, [client])
 
   // When the selected room changes, load recent history and attach a Room.timeline listener
@@ -190,16 +230,37 @@ export default function ChatDemo() {
   }
 
   // block/unblock helpers
-  const onBlock = (userIdToBlock?: string | null) => {
+  const onBlock = async (userIdToBlock?: string | null) => {
     if (!userIdToBlock) return
-    addBlocked(userIdToBlock)
-    setBlocked(getBlocked())
+    try {
+      if (client) {
+        const list = await addBlockedToServer(client, userIdToBlock)
+        setBlocked(list)
+      } else {
+        addBlockedLocal(userIdToBlock)
+        setBlocked(getBlockedLocal())
+      }
+    } catch (_) {
+      // fallback to local
+      addBlockedLocal(userIdToBlock)
+      setBlocked(getBlockedLocal())
+    }
   }
 
-  const onUnblock = (userIdToUnblock?: string | null) => {
+  const onUnblock = async (userIdToUnblock?: string | null) => {
     if (!userIdToUnblock) return
-    removeBlocked(userIdToUnblock)
-    setBlocked(getBlocked())
+    try {
+      if (client) {
+        const list = await removeBlockedFromServer(client, userIdToUnblock)
+        setBlocked(list)
+      } else {
+        removeBlockedLocal(userIdToUnblock)
+        setBlocked(getBlockedLocal())
+      }
+    } catch (_) {
+      removeBlockedLocal(userIdToUnblock)
+      setBlocked(getBlockedLocal())
+    }
   }
 
   // Retry a failed message by finding it and re-sending its body with a fresh txnId.
@@ -256,7 +317,7 @@ export default function ChatDemo() {
   }
 
   const otherUserInDM = getOtherUserId()
-  const otherIsBlocked = !!otherUserInDM && isBlocked(otherUserInDM)
+  const otherIsBlocked = !!otherUserInDM && blocked.includes(otherUserInDM)
 
   // Poll for read receipts for sent events and annotate messages with receipts (small UX feature)
   useEffect(() => {
@@ -270,7 +331,7 @@ export default function ChatDemo() {
         for (const m of messages) {
           if (cancelled) break
           if (!m.id || String(m.id).startsWith('txn-') || m.status !== 'sent') continue
-          if (isBlocked(m.sender)) continue
+          if (blocked.includes(m.sender || '')) continue
           try {
             let receipts: string[] = []
             if ((client as any).getEventReceipts) {
@@ -385,7 +446,7 @@ export default function ChatDemo() {
             <div style={{color: '#888'}}>No messages for this room yet — send one to seed the timeline.</div>
           ) : (
             // hide messages from blocked users in the timeline
-            messages.filter(m => !m.sender || !isBlocked(m.sender)).map(m => (
+            messages.filter(m => !m.sender || !blocked.includes(m.sender)).map(m => (
               <div key={m.id} style={{padding: 8, borderRadius: 6, background: m.sender === userId ? '#eaffea' : '#f9f9ff', marginBottom: 6}}>
                 <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8}}>
                   <div style={{fontSize: 12, color: '#333', fontWeight: 600}}>{m.sender || 'unknown'}</div>
@@ -396,7 +457,7 @@ export default function ChatDemo() {
                     )}
                     {/* allow blocking/unblocking of message sender (client-side) */}
                     {m.sender && m.sender !== userId && (
-                      isBlocked(m.sender) ? (
+                      blocked.includes(m.sender) ? (
                         <button onClick={() => onUnblock(m.sender)} style={{padding: '4px 8px', borderRadius: 6}}>Unblock</button>
                       ) : (
                         <button onClick={() => onBlock(m.sender)} style={{padding: '4px 8px', borderRadius: 6}}>Block</button>
