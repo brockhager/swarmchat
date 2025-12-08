@@ -14,4 +14,11 @@
     "@tauri-apps/api": "^2.4.0",
     "matrix-js-sdk": "^18.0.0"
   }
+  ,
+  "scripts": {
+    "dev": "npm run tauri:dev",
+    "tauri:dev": "tauri dev",
+    "build": "npm run tauri:build",
+    "tauri:build": "tauri build"
+  }
 }

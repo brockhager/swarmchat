@@ -1,6 +1,8 @@
 // Simple client-side block list storage + helpers (UX-only). Uses localStorage for persistence.
 
 const STORAGE_KEY = 'swarmchat_block_list'
+import { MatrixClient } from 'matrix-js-sdk'
+
 const ACCOUNT_DATA_EVENT = 'io.swarmchat.block_list'
 
 const MUTE_ACCOUNT_DATA_EVENT = 'io.swarmchat.mute_list'
@@ -38,11 +40,11 @@ export function removeBlocked(userId: string) {
 
 // Server-backed helpers using matrix-js-sdk client where available.
 // Each of these will fall back to the local-storage variant if the client is not provided
-export async function getBlockedFromServer(client?: any): Promise<string[]> {
+export async function getBlockedFromServer(client?: MatrixClient | null): Promise<string[]> {
   try {
-    if (!client || !client.getAccountData) return getBlocked()
-    const ev = (client as any).getAccountData ? (client as any).getAccountData(ACCOUNT_DATA_EVENT) : null
-    const content = ev?.getContent ? ev.getContent() : ev?.content ?? ev
+    if (!client || typeof client.getAccountData !== 'function') return getBlocked()
+    const ev = client.getAccountData(ACCOUNT_DATA_EVENT)
+    const content = ev?.getContent ? ev.getContent() : (ev as any)?.content ?? (ev as any)
     if (!content) return getBlocked()
     // content may either be { blocked: [..] } or directly an array
     const list = Array.isArray(content?.blocked) ? content.blocked : Array.isArray(content) ? content : []
@@ -52,21 +54,21 @@ export async function getBlockedFromServer(client?: any): Promise<string[]> {
   }
 }
 
-export async function setBlockedToServer(client: any, list: string[]): Promise<boolean> {
+export async function setBlockedToServer(client: MatrixClient | null, list: string[]): Promise<boolean> {
   try {
-    if (!client || !client.setAccountData) {
+    if (!client || typeof client.setAccountData !== 'function') {
       // fallback to local
       try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(list)) } catch (_) {}
       return true
     }
-    await (client as any).setAccountData(ACCOUNT_DATA_EVENT, { blocked: list })
+    await client.setAccountData(ACCOUNT_DATA_EVENT, { blocked: list })
     return true
   } catch (_) {
     return false
   }
 }
 
-export async function addBlockedToServer(client: any, userId: string): Promise<string[]> {
+export async function addBlockedToServer(client: MatrixClient | null, userId: string): Promise<string[]> {
   if (!userId) return getBlocked()
   const list = await getBlockedFromServer(client)
   if (!list.includes(userId)) list.push(userId)
@@ -74,7 +76,7 @@ export async function addBlockedToServer(client: any, userId: string): Promise<s
   return list
 }
 
-export async function removeBlockedFromServer(client: any, userId: string): Promise<string[]> {
+export async function removeBlockedFromServer(client: MatrixClient | null, userId: string): Promise<string[]> {
   if (!userId) return getBlocked()
   const list = (await getBlockedFromServer(client)).filter(x => x !== userId)
   await setBlockedToServer(client, list)
@@ -115,9 +117,9 @@ export function removeMuted(userId: string) {
 
 export async function getMutedFromServer(client?: any): Promise<string[]> {
   try {
-    if (!client || !client.getAccountData) return getMuted()
-    const ev = (client as any).getAccountData ? (client as any).getAccountData(MUTE_ACCOUNT_DATA_EVENT) : null
-    const content = ev?.getContent ? ev.getContent() : ev?.content ?? ev
+    if (!client || typeof client.getAccountData !== 'function') return getMuted()
+    const ev = client.getAccountData(MUTE_ACCOUNT_DATA_EVENT)
+    const content = ev?.getContent ? ev.getContent() : (ev as any)?.content ?? (ev as any)
     if (!content) return getMuted()
     const list = Array.isArray(content?.muted) ? content.muted : Array.isArray(content) ? content : []
     return list
@@ -126,20 +128,20 @@ export async function getMutedFromServer(client?: any): Promise<string[]> {
   }
 }
 
-export async function setMutedToServer(client: any, list: string[]): Promise<boolean> {
+export async function setMutedToServer(client: MatrixClient | null, list: string[]): Promise<boolean> {
   try {
-    if (!client || !client.setAccountData) {
+    if (!client || typeof client.setAccountData !== 'function') {
       try { window.localStorage.setItem('swarmchat_mute_list', JSON.stringify(list)) } catch (_) {}
       return true
     }
-    await (client as any).setAccountData(MUTE_ACCOUNT_DATA_EVENT, { muted: list })
+    await client.setAccountData(MUTE_ACCOUNT_DATA_EVENT, { muted: list })
     return true
   } catch (_) {
     return false
   }
 }
 
-export async function addMutedToServer(client: any, userId: string): Promise<string[]> {
+export async function addMutedToServer(client: MatrixClient | null, userId: string): Promise<string[]> {
   if (!userId) return getMuted()
   const list = await getMutedFromServer(client)
   if (!list.includes(userId)) list.push(userId)
@@ -147,7 +149,7 @@ export async function addMutedToServer(client: any, userId: string): Promise<str
   return list
 }
 
-export async function removeMutedFromServer(client: any, userId: string): Promise<string[]> {
+export async function removeMutedFromServer(client: MatrixClient | null, userId: string): Promise<string[]> {
   if (!userId) return getMuted()
   const list = (await getMutedFromServer(client)).filter(x => x !== userId)
   await setMutedToServer(client, list)

@@ -1,0 +1,20 @@
+{
+  "package": {
+    "productName": "SwarmChat",
+    "version": "0.0.0"
+  },
+  "tauri": {
+    "bundle": {
+      "identifier": "com.example.swarmchat",
+      "active": true,
+      "resources": [
+        "sidecar/dendrite"
+      ]
+    },
+    "allowlist": {
+      "all": true
+    },
+    "windows": [],
+    "updater": { "active": false }
+  }
+}
