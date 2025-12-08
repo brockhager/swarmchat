@@ -43,6 +43,12 @@ export default function useMatrixClient({
     return () => { mounted.current = false; };
   }, []);
 
+  const extractUserId = (c: any): string | null => {
+    if (!c) return null;
+    if (typeof c.getUserId === 'function') return c.getUserId();
+    return c?.credentials?.userId ?? null;
+  }
+
   const connect = useCallback(async () => {
     setError(null);
 
@@ -87,7 +93,7 @@ export default function useMatrixClient({
         try { c.startClient(); } catch (_) {}
         if (mounted.current) {
           setClient(c);
-          setUserId((c as any).getUserId ? (c as any).getUserId() : (c as any).credentials?.userId ?? null);
+          setUserId(extractUserId(c));
           setIsAuthenticated(true);
           setState('connected');
         }
@@ -106,7 +112,7 @@ export default function useMatrixClient({
         try { c.startClient(); } catch (_) {}
         if (mounted.current) {
           setClient(c);
-          setUserId((c as any).getUserId ? (c as any).getUserId() : (c as any).credentials?.userId ?? null);
+          setUserId(extractUserId(c));
           setIsAuthenticated(true);
           setState('connected');
         }
@@ -118,7 +124,7 @@ export default function useMatrixClient({
       try { anon.startClient(); } catch (_) {}
       if (mounted.current) {
         setClient(anon as MatrixClientStub);
-        setUserId((anon as any).getUserId ? (anon as any).getUserId() : (anon as any).credentials?.userId ?? null);
+        setUserId(extractUserId(anon));
         // No auth in this case
         setIsAuthenticated(false);
         setState('connected');
