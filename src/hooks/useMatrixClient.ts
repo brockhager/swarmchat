@@ -248,6 +248,30 @@ export default function useMatrixClient({
     }
   }, [monitor.ready, client, disconnect]);
 
+  // Keep multiple hook instances in sync via localStorage changes: when another instance logs in/out
+  useEffect(() => {
+    const handler = (ev: StorageEvent) => {
+      if (!ev.key) return;
+      if (ev.key === 'swarmchat_access_token' || ev.key === 'swarmchat_user_id') {
+        const tok = typeof window !== 'undefined' ? window.localStorage.getItem('swarmchat_access_token') : null
+        const uid = typeof window !== 'undefined' ? window.localStorage.getItem('swarmchat_user_id') : null
+        if (tok && uid) {
+          // another instance logged in — reconnect using persisted token
+          if (!client || !isAuthenticated) {
+            (async () => { try { await connect(); } catch (_) {} })()
+          }
+        } else {
+          // logged out in another tab/hook — disconnect locally
+          if (client) {
+            (async () => { try { await disconnect(); } catch (_) {} })()
+          }
+        }
+      }
+    }
+    if (typeof window !== 'undefined') window.addEventListener('storage', handler)
+    return () => { if (typeof window !== 'undefined') window.removeEventListener('storage', handler) }
+  }, [client, connect, disconnect, isAuthenticated]);
+
   return {
     client,
     userId,
