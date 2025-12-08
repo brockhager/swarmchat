@@ -3,9 +3,12 @@ import NodeControl from './components/NodeControl';
 import LogViewer from './components/LogViewer';
 import useConnectionMonitor from './hooks/useConnectionMonitor';
 import './App.css';
+import useMatrixClient from './hooks/useMatrixClient';
+import ChatDemo from './components/ChatDemo';
 
 const App: React.FC = () => {
   const [showLogs, setShowLogs] = useState(false);
+  const { connectionState } = useMatrixClient({ autoConnect: true, requiredPort: true });
 
   return (
     <div className="app-layout">
@@ -26,6 +29,11 @@ const App: React.FC = () => {
       <main className="app-main-content">
         <ConnectionGate />
         <p>Welcome to SwarmChat. Decentralized chat content goes here.</p>
+        {connectionState === 'connected' ? (
+          <ChatDemo />
+        ) : (
+          <div style={{padding: 8, color: '#666'}}>Matrix client not connected — wait for node readiness above to show the chat demo.</div>
+        )}
         {!showLogs && <p>Click "Show Logs" to view your local node status.</p>}
       </main>
 
@@ -51,10 +59,14 @@ function ConnectionGate() {
     refreshStatus,
   } = useConnectionMonitor({ pollInterval: 1000, requiredPort: true });
 
+  // useMatrixClient demonstrates waiting for monitor and then connecting
+  const { client, connectionState, connectionError, connect, disconnect } = useMatrixClient({ pollInterval: 1000, requiredPort: true, autoConnect: true });
+
   if (ready) {
     return (
       <div style={{ padding: 12, background: '#f4fff7', borderRadius: 8, marginBottom: 12 }}>
-        Node is ready — connected to local Dendrite {clientPort ? `(port ${clientPort})` : ''} {pid ? `PID ${pid}` : ''}
+        Node is ready — {connectionState === 'connected' ? 'connected to' : 'ready for'} local Dendrite {clientPort ? `(port ${clientPort})` : ''} {pid ? `PID ${pid}` : ''}
+        {connectionState === 'connecting' ? ' (connecting...)' : ''}
       </div>
     );
   }
