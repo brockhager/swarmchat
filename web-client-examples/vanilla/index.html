@@ -56,7 +56,17 @@
           try {
             if (window.__TAURI__ && window.__TAURI__.invoke) {
               const s = await window.__TAURI__.invoke('status_dendrite');
-              updateStatus(String(s));
+              // the new status is a structured object
+              try {
+                const state = (s && s.state) ? s.state : 'stopped';
+                updateStatus(state);
+                // try populate port text
+                if (s && s.client_port && statusText) {
+                  statusText.textContent = `${state} (port ${s.client_port})`;
+                }
+              } catch (e) {
+                updateStatus('stopped');
+              }
             } else {
               updateStatus('stopped');
             }
@@ -102,9 +112,22 @@
           // using the window API
           window.__TAURI__.event.listen('dendrite-stdout', (e) => {
             appendLine('stdout', e.payload);
+            // attempt to detect port and update status display if present
+            try {
+              const matchPort = (e.payload || '').match(/(\d{2,5})/);
+              if (matchPort && matchPort[1]) {
+                const v = Number(matchPort[1]);
+                if (!Number.isNaN(v)) {
+                  if (statusText) statusText.textContent = `running (port ${v})`;
+                  const s = document.getElementById('status'); if (s) s.style.background = '#4caf50';
+                }
+              }
+            } catch (e) { }
           });
           window.__TAURI__.event.listen('dendrite-stderr', (e) => {
             appendLine('stderr', e.payload);
+            // reflect error in status display
+            try { if (statusText) statusText.textContent = 'error'; const s = document.getElementById('status'); if (s) s.style.background = '#ff6b6b'; } catch(e){}
           });
         } else {
           // Fallback: if not running inside Tauri, attach to a mock API for dev

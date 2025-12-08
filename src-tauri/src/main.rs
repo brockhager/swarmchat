@@ -8,11 +8,19 @@ use std::thread;
 use std::time::Duration;
 
 use tauri::{async_runtime::spawn, Manager};
+use serde::Serialize;
+use std::time::SystemTime;
 
 /// Start the Dendrite binary as a sidecar and stream its stdout/stderr to the host logs.
 // Shared state kept in the Tauri App so we can control the sidecar lifecycle
 struct SidecarState {
   child: Mutex<Option<std::process::Child>>,
+  // when the current child was started (used to calculate uptime)
+  started_at: Mutex<Option<SystemTime>>,
+  // detected client port (if discovered from log lines)
+  client_port: Mutex<Option<u16>>,
+  // last known error string (captured from stderr)
+  last_error: Mutex<Option<String>>,
 }
 
 fn start_dendrite_sidecar(app_handle: tauri::AppHandle, state: &tauri::State<SidecarState>) {
@@ -84,6 +92,17 @@ fn start_dendrite_sidecar(app_handle: tauri::AppHandle, state: &tauri::State<Sid
         *guard = Some(child);
       }
 
+      // Record start time and clear previous port/error
+      if let Ok(mut t) = state.started_at.lock() {
+        *t = Some(SystemTime::now());
+      }
+      if let Ok(mut p) = state.client_port.lock() {
+        *p = None;
+      }
+      if let Ok(mut e) = state.last_error.lock() {
+        *e = None;
+      }
+
       // Spawn a watcher thread that polls for child exit using try_wait and clears state when done
       {
         let state_for_watcher = state.clone();
@@ -128,6 +147,18 @@ fn start_dendrite_sidecar(app_handle: tauri::AppHandle, state: &tauri::State<Sid
             println!("[dendrite stdout] {}", line);
             // If desired, the app can emit real-time events to the frontend:
             let _ = handle.emit_all("dendrite-stdout", line.clone());
+
+            // Try to detect a port in common "listening" or "port" messages from the node
+            // Very permissive: search for a numeric substring and treat it as a candidate port
+            if let Ok(mut guard) = state.client_port.lock() {
+              if guard.is_none() {
+                if let Some(port) = find_port_in_text(&line) {
+                  *guard = Some(port);
+                  let _ = handle.emit_all("dendrite-port-detected", port);
+                  println!("[sidecar] detected dendrite client port: {}", port);
+                }
+              }
+            }
           }
         });
       }
@@ -139,6 +170,10 @@ fn start_dendrite_sidecar(app_handle: tauri::AppHandle, state: &tauri::State<Sid
           let reader = BufReader::new(err);
           for line in reader.lines().flatten() {
             eprintln!("[dendrite stderr] {}", line);
+            // store last error for status reporting
+            if let Ok(mut guard) = state.last_error.lock() {
+              *guard = Some(line.clone());
+            }
             let _ = handle.emit_all("dendrite-stderr", line.clone());
           }
         });
@@ -222,19 +257,76 @@ fn start_dendrite(app_handle: tauri::AppHandle, state: tauri::State<SidecarState
   Ok("starting".into())
 }
 
-// Tauri command: query whether dendrite is currently running
-#[tauri::command]
-fn status_dendrite(state: tauri::State<SidecarState>) -> Result<String, String> {
-  match state.child.lock() {
-    Ok(guard) => {
-      if guard.is_some() {
-        Ok("running".into())
-      } else {
-        Ok("stopped".into())
+// Helper to find first port-like number in a string (very permissive)
+fn find_port_in_text(s: &str) -> Option<u16> {
+  // Collect contiguous digit runs
+  let mut num = String::new();
+  for c in s.chars() {
+    if c.is_ascii_digit() {
+      num.push(c);
+    } else {
+      if !num.is_empty() {
+        if let Ok(v) = num.parse::<u16>() {
+          if v > 0 {
+            return Some(v);
+          }
+        }
+        num.clear();
       }
     }
-    Err(e) => Err(format!("failed to query sidecar state: {}", e)),
   }
+  if !num.is_empty() {
+    if let Ok(v) = num.parse::<u16>() {
+      if v > 0 { return Some(v); }
+    }
+  }
+  None
+}
+
+// Tauri command: query a structured status of the dendrite process
+#[tauri::command]
+fn status_dendrite(state: tauri::State<SidecarState>) -> Result<DendriteStatus, String> {
+  // Build status using the shared state values we track
+  let pid = match state.child.lock() {
+    Ok(guard) => guard.as_ref().map(|c| c.id()),
+    Err(e) => return Err(format!("failed to acquire child lock: {}", e)),
+  };
+
+  let started = match state.started_at.lock() {
+    Ok(guard) => *guard,
+    Err(e) => return Err(format!("failed to acquire started_at lock: {}", e)),
+  };
+
+  let uptime_seconds = started.and_then(|t| t.elapsed().ok().map(|d| d.as_secs()));
+
+  let client_port = match state.client_port.lock() {
+    Ok(g) => *g,
+    Err(_) => None,
+  };
+
+  let last_error = match state.last_error.lock() {
+    Ok(g) => g.clone(),
+    Err(_) => None,
+  };
+
+  let state_str = if pid.is_some() { "running" } else { "stopped" };
+
+  Ok(DendriteStatus {
+    state: state_str.into(),
+    pid,
+    uptime_seconds,
+    client_port,
+    error_message: last_error,
+  })
+}
+
+#[derive(Debug, Serialize)]
+struct DendriteStatus {
+  state: String,
+  pid: Option<u32>,
+  uptime_seconds: Option<u64>,
+  client_port: Option<u16>,
+  error_message: Option<String>,
 }
 
 fn main() {

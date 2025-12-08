@@ -61,6 +61,15 @@ export default function LogViewer({ maxLines = 200 }: { maxLines?: number }) {
     };
   }, [maxLines]);
 
+  // Persist a copy of the logs to localStorage so other UI parts (NodeControl) can export them
+  useEffect(() => {
+    try {
+      localStorage.setItem('swarmchat:dendrite_logs', JSON.stringify(lines.map(l => ({ origin: l.origin, text: l.text, ts: l.ts }))));
+    } catch (_e) {
+      // ignore localStorage failures
+    }
+  }, [lines]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ padding: '6px 8px', borderBottom: '1px solid rgba(0,0,0,.08)' }}>

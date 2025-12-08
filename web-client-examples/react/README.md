@@ -33,5 +33,10 @@ Notes:
 - You can style the container any way your app needs; it's intentionally minimal.
 - Use the emitted events (`dendrite-stdout`, `dendrite-stderr`) to show node status and errors to the user.
 
+Local persistence & diagnostics export:
+
+- `LogViewer.tsx` persists captured logs to localStorage at the key `swarmchat:dendrite_logs` so they can be exported even after navigation.
+- `NodeControl.tsx` exposes an "Export logs" button that reads these saved logs and writes them to a file using Tauri's `dialog.save` + `fs.writeFile`. When not running inside Tauri the button falls back to a browser download.
+
 Controls & Status:
 - There's also a companion `NodeControl.tsx` file in this folder which provides a compact status indicator and Start/Stop buttons using the `start_dendrite`, `stop_dendrite`, and `status_dendrite` commands implemented in `src-tauri/src/main.rs`.
