@@ -8,10 +8,10 @@ The app bundles everything you need into one platform-specific installer — jus
 
 ## 🚀 Get Started (The 1-Click Install)
 
-SwarmChat is distributed as a single small installer for each platform: a `.dmg` for macOS, a `.msi` for Windows, and an `AppImage` for Linux.
+SwarmChat is distributed as a single small installer for each platform: a `.dmg` for macOS, a single `.exe` installer for Windows, and an `AppImage` for Linux.
 
 1. Open the project's GitHub Releases page: https://github.com/brockhager/swarmchat/releases
-2. Find the latest release and download the file that matches your operating system (.dmg, .msi, or AppImage).
+2. Find the latest release and download the file that matches your operating system (.dmg, `.exe`, or AppImage).
 3. Run the downloaded file and follow the standard prompt to install SwarmChat.
 
 That's it — one download, one install. No extra servers, no manual configuration.

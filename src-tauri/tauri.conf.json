@@ -7,9 +7,19 @@
     "bundle": {
       "identifier": "com.example.swarmchat",
       "active": true,
+      "targets": ["nsis"],
       "resources": [
-        "sidecar/dendrite"
-      ]
+        "sidecar/dendrite",
+        "sidecar/dendrite.exe"
+      ],
+      "windows": {
+        "digestAlgorithm": "sha256",
+        "certificateThumbprint": "",
+        "publisher": "SwarmChat",
+        "msi-release": {
+          "perMachine": false
+        }
+      }
     },
     "allowlist": {
       "all": true
