@@ -114,9 +114,15 @@ jobs:
           }
 
       - name: List packaged artifacts (for debugging)
+        shell: bash
         run: |
           echo "--- bundle output ---"
-          ls -la src-tauri/target/release/bundle || true
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            # Use PowerShell to list files on Windows
+            pwsh -Command "if (Test-Path 'src-tauri/target/release/bundle') { Get-ChildItem -Path 'src-tauri/target/release/bundle' -Recurse -ErrorAction SilentlyContinue | Format-Table -AutoSize }"
+          else
+            ls -la src-tauri/target/release/bundle || true
+          fi
 
       - name: "macOS: Notarize DMG (if API key present)"
         if: ${{ matrix.os == 'macos-latest' }}
