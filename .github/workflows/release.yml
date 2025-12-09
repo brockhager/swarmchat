@@ -193,7 +193,8 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ github.ref_name }}
-          files: artifacts/**
+          artifacts: artifacts/**
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Notarize macOS artifact (if APPLE credentials present)
         # run on publish job but perform credential checks inside the step to avoid workflow validation errors
