@@ -50,7 +50,7 @@ jobs:
 
       - name: Tauri build
         if: ${{ steps.prepare_sidecar.outputs.has_sidecar == 'true' }}
-        uses: tauri-apps/tauri-action@v2
+        uses: tauri-apps/tauri-action@action-v0.6.0
         with:
           release: true
 
@@ -141,7 +141,7 @@ jobs:
           xcrun stapler validate "$DMG" || true
 
       - name: Upload bundles as job artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: bundle-${{ matrix.os }}
           path: src-tauri/target/release/bundle
@@ -156,7 +156,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
 
