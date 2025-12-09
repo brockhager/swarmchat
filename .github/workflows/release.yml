@@ -80,7 +80,8 @@ jobs:
         env:
           WINDOWS_SIGN_CERT: ${{ secrets.WINDOWS_SIGN_CERT }}
           WINDOWS_SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
-        shell: powershell
+        # use PowerShell core on Windows runners (pwsh) for modern shell behavior
+        shell: pwsh
         run: |
           $root = "${{ github.workspace }}"
           $pfxPath = Join-Path $root "src-tauri\sidecar\cert.pfx"
@@ -91,14 +92,23 @@ jobs:
           $b64 = "${env:WINDOWS_SIGN_CERT}"
           [System.IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($b64))
           Write-Host "Wrote PFX to $pfxPath"
-          # install osslsigncode if missing (choco)
-          choco install osslsigncode -y || Write-Host "osslsigncode may already be installed"
+          # install osslsigncode if missing (choco); ignore non-zero exit codes (may already be present)
+          try {
+            choco install osslsigncode -y
+          } catch {
+            Write-Host "osslsigncode may already be installed or installation failed: $_"
+          }
           # find MSI/EXE to sign
           $artifacts = Get-ChildItem -Path (Join-Path $root 'src-tauri\target\release\bundle') -Recurse -Include *.msi,*.exe | Select-Object -First 1
           if ($artifacts) {
             $file = $artifacts.FullName
             Write-Host "Signing $file with osslsigncode"
-            osslsigncode sign -pkcs12 $pfxPath -pass "${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}" -n "SwarmChat" -t http://timestamp.digicert.com -in $file -out $file.signed || Write-Host "osslsigncode failed"
+            try {
+              & osslsigncode sign -pkcs12 $pfxPath -pass $env:WINDOWS_SIGN_CERT_PASSWORD -n "SwarmChat" -t http://timestamp.digicert.com -in $file -out "$file.signed"
+              if ($LASTEXITCODE -ne 0) { Write-Host "osslsigncode sign returned exit code $LASTEXITCODE" }
+            } catch {
+              Write-Host "osslsigncode failed: $_"
+            }
           } else {
             Write-Host "No MSI/EXE found to sign"
           }
