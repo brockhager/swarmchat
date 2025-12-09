@@ -29,6 +29,19 @@ CI notes
 - Add build matrix targeting darwin, linux, windows if you publish release artifacts for multiple platforms.
 - Ensure your CI step copies the platform-specific dendrite binary into `src-tauri/sidecar/` before invoking `tauri build`.
 
+Release automation
+- The repository contains a sample GitHub Actions workflow `.github/workflows/release.yml` that builds packages on tag pushes (matching `v*`) across Windows/macOS/Linux.
+- The workflow uploads the platform bundles as artifacts and then creates a GitHub Release with the produced installers.
+
+Signing & notarization (secrets)
+- The CI workflow supports publishing artifacts, but signing/notarization steps require platform-specific credentials. Add the following secrets to your repository settings for full signing support:
+	- `WINDOWS_SIGNING_CERT` — base64-encoded PFX certificate for Windows code signing (or use OS-level signing tools).
+	- `WINDOWS_SIGNING_PASSWORD` — password for the PFX certificate.
+	- `MACOS_NOTARIZE_APPLE_ID` — Apple ID for notarization.
+	- `MACOS_NOTARIZE_PASSWORD` — App-specific password for notarization (or use GitHub Actions Secrets Manager integration).
+
+Make sure these secrets are available to the CI environment and your chosen tauri-action or signing steps read them. The workflow will *not* include signing by default — you must add platform-specific signing steps where indicated in the CI pipeline and reference the secret names above.
+
 Troubleshooting
 - If the app fails to start or unbundle the sidecar, open devtools or stdout to inspect the path printed by Tauri: the app logs `starting dendrite from {path}` so you can confirm where it was resolved.
 
