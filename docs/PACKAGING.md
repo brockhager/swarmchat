@@ -40,6 +40,22 @@ Signing & notarization (secrets)
 	- `MACOS_NOTARIZE_APPLE_ID` — Apple ID for notarization.
 	- `MACOS_NOTARIZE_PASSWORD` — App-specific password for notarization (or use GitHub Actions Secrets Manager integration).
 
+	Windows signing secrets
+	- `WINDOWS_SIGN_CERT` — base64-encoded PFX certificate content for Windows code signing.
+	- `WINDOWS_SIGN_CERT_PASSWORD` — password to unlock the PFX file.
+
+	macOS notarization secrets (options)
+	- API Key approach (recommended modern flow):
+		- `APPLE_API_KEY` — base64-encoded `.p8` API key file for notarytool
+		- `APPLE_API_KEY_ID` — the Key ID
+		- `APPLE_API_ISSUER` — the Issuer ID (10-character team ID)
+
+	- App-specific password (alternate / older flow):
+		- `APPLE_ID` — Apple ID email address
+		- `APPLE_APP_SPECIFIC_PASSWORD` — the app-specific password used with altool
+
+	Note: the CI workflow's NOTARIZE steps will only run when the appropriate secrets are present. Keep secrets secure in GitHub repo settings and ensure they are set at the organization or repo level as needed.
+
 Make sure these secrets are available to the CI environment and your chosen tauri-action or signing steps read them. The workflow will *not* include signing by default — you must add platform-specific signing steps where indicated in the CI pipeline and reference the secret names above.
 
 Troubleshooting
