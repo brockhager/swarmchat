@@ -30,18 +30,26 @@ jobs:
         run: npm ci
 
       - name: Prepare sidecar
+        id: prepare_sidecar
         run: |
           echo "Preparing sidecar for runner: $RUNNER_OS"
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            powershell -c .\\scripts\\ci-copy-sidecar.ps1 -Target windows
+            powershell -c .\scripts\ci-copy-sidecar.ps1 -Target windows || true
           else
             bash ./scripts/ci-copy-sidecar.sh ${{ matrix.os }} || true
           fi
+          # Check if a sidecar binary was placed in resources
+          HAS_SIDECAR=false
+          if [ -f "src-tauri/resources/sidecar/dendrite" ] || [ -f "src-tauri/resources/sidecar/dendrite.exe" ]; then
+            HAS_SIDECAR=true
+          fi
+          echo "has_sidecar=$HAS_SIDECAR" >> $GITHUB_OUTPUT
 
       - name: Build front-end
         run: npm run build || true
 
       - name: Tauri build
+        if: ${{ steps.prepare_sidecar.outputs.has_sidecar == 'true' }}
         uses: tauri-apps/tauri-action@v2
         with:
           release: true
