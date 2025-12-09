@@ -22,6 +22,10 @@ jobs:
 
     env:
       TAURI_BUILD: true
+      # Optional: if you set a repository secret named SIDECAR_URL containing a public or authenticated
+      # URL for the prebuilt Windows sidecar (dendrite-windows.exe), the workflow will download it into
+      # src-tauri/sidecar/prebuilt so the packaging step can include a real binary.
+      SIDECAR_URL: ${{ secrets.SIDECAR_URL }}
 
     steps:
       - name: Checkout
@@ -40,6 +44,44 @@ jobs:
         shell: bash
         run: |
           echo "Preparing sidecar for runner: $RUNNER_OS"
+          # If SIDECAR_URL is present (set via repo secret), download the prebuilt binary into prebuilt/
+          if [ -n "$SIDECAR_URL" ]; then
+            echo "SIDECAR_URL set — attempting download into src-tauri/sidecar/prebuilt"
+            mkdir -p src-tauri/sidecar/prebuilt
+        - name: Verbose Tauri build (capture logs)
+          if: ${{ matrix.os == 'windows-latest' && steps.prepare_sidecar.outputs.has_sidecar == 'true' }}
+          shell: pwsh
+          run: |
+            Write-Host "Running verbose Tauri build and saving logs to artifact"
+            # Make sure the CLI is installed in the runner scope and capture full logs
+            npm install -g @tauri-apps/cli@v1 || true
+            $log = "tauri-build-output.txt"
+            # Run the CLI with verbose output and capture it.
+            try {
+              npx @tauri-apps/cli@latest build --release 2>&1 | Tee-Object -FilePath $log
+              $exit = $LASTEXITCODE
+            } catch {
+              $_ | Out-File -FilePath $log -Append
+              $exit = 1
+            }
+            if ($exit -ne 0) { Write-Host "tauri build exited $exit" }
+            # always create an artifacts directory so we can upload logs
+            New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+            Move-Item -Force $log artifacts\$log
+            case "$RUNNER_OS" in
+              Windows)
+                echo "Downloading Windows sidecar to src-tauri/sidecar/prebuilt/dendrite-windows.exe"
+                pwsh -Command "try { Invoke-WebRequest -Uri '$SIDECAR_URL' -OutFile 'src-tauri/sidecar/prebuilt/dendrite-windows.exe' -UseBasicParsing } catch { Write-Host 'Download failed'; exit 0 }" || true
+                ;;
+              Linux)
+                curl -L -o src-tauri/sidecar/prebuilt/dendrite-linux "$SIDECAR_URL" || true
+                ;;
+              macOS)
+                curl -L -o src-tauri/sidecar/prebuilt/dendrite-macos "$SIDECAR_URL" || true
+                ;;
+            esac
+          fi
+
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             # Use pwsh from bash to run the PS1 helper on Windows
             pwsh -Command "& './scripts/ci-copy-sidecar.ps1' -Target windows" || true
