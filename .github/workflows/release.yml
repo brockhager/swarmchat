@@ -31,10 +31,12 @@ jobs:
 
       - name: Prepare sidecar
         id: prepare_sidecar
+        shell: bash
         run: |
           echo "Preparing sidecar for runner: $RUNNER_OS"
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            powershell -c .\scripts\ci-copy-sidecar.ps1 -Target windows || true
+            # Use pwsh from bash to run the PS1 helper on Windows
+            pwsh -Command "& './scripts/ci-copy-sidecar.ps1' -Target windows" || true
           else
             bash ./scripts/ci-copy-sidecar.sh ${{ matrix.os }} || true
           fi
