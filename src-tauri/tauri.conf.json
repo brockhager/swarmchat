@@ -3,13 +3,14 @@
     "productName": "SwarmChat",
     "version": "0.0.0"
   },
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
+    "devPath": "../public",
+    "distDir": "../public"
+  },
+
   "tauri": {
-    "build": {
-      "beforeDevCommand": "",
-      "beforeBuildCommand": "",
-      "devPath": "../public",
-      "distDir": "../public"
-    },
 
     "bundle": {
       "identifier": "com.example.swarmchat",
