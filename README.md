@@ -10,6 +10,15 @@ The app bundles everything you need into one platform-specific installer — jus
 
 SwarmChat is distributed as a single small installer for each platform: a `.dmg` for macOS, a single `.exe` installer for Windows, and an `AppImage` for Linux.
 
+### Download installers (v0.1.6)
+
+If you want to download installers immediately, here are the current v0.1.6 installers (placeholders for demo/testing):
+
+- Windows EXE (placeholder): [SwarmChat-0.1.6-setup.exe](https://raw.githubusercontent.com/brockhager/swarmchat/main/releases/SwarmChat-0.1.6-setup.exe)
+- Windows MSI (placeholder): [SwarmChat-0.1.6-setup.msi](https://raw.githubusercontent.com/brockhager/swarmchat/main/releases/SwarmChat-0.1.6-setup.msi)
+
+> NOTE: These files are temporary placeholder installers in the repo for immediate downloads and are not functional installers. To generate fully working installers that include the real Dendrite sidecar, please provide the real Windows sidecar binary (dendrite.exe) or configure CI to fetch it (repo secret `SIDECAR_URL`).
+
 1. Open the project's GitHub Releases page: https://github.com/brockhager/swarmchat/releases
 2. Find the latest release and download the file that matches your operating system (.dmg, `.exe`, or AppImage).
 3. Run the downloaded file and follow the standard prompt to install SwarmChat.
