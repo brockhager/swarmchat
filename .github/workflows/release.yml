@@ -47,8 +47,15 @@ jobs:
           release: true
 
       - name: "macOS: import signing certificate to keychain (if present)"
-        if: ${{ matrix.os == 'macos-latest' && secrets.APPLE_CERT_P12 }}
+        if: ${{ matrix.os == 'macos-latest' }}
+        env:
+          APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
         run: |
+          if [ -z "$APPLE_CERT_P12" ]; then
+            echo "No APPLE_CERT_P12 secret configured — skipping macOS signing step"
+            exit 0
+          fi
           echo "Found Apple certificate secret — installing into temporary keychain"
           echo "$APPLE_CERT_P12" | base64 --decode > /tmp/cert.p12
           KEYCHAIN_PASS="ci-$RANDOM"
@@ -59,12 +66,19 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PASS" build.keychain
 
       - name: "Windows: sign built installers (if present)"
-        if: ${{ matrix.os == 'windows-latest' && secrets.WINDOWS_SIGN_CERT }}
+        if: ${{ matrix.os == 'windows-latest' }}
+        env:
+          WINDOWS_SIGN_CERT: ${{ secrets.WINDOWS_SIGN_CERT }}
+          WINDOWS_SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
         shell: powershell
         run: |
           $root = "${{ github.workspace }}"
           $pfxPath = Join-Path $root "src-tauri\sidecar\cert.pfx"
-          $b64 = "${{ secrets.WINDOWS_SIGN_CERT }}"
+          if (-not $env:WINDOWS_SIGN_CERT) {
+            Write-Host "No WINDOWS_SIGN_CERT secret configured; skipping Windows signing"
+            exit 0
+          }
+          $b64 = "${env:WINDOWS_SIGN_CERT}"
           [System.IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($b64))
           Write-Host "Wrote PFX to $pfxPath"
           # install osslsigncode if missing (choco)
@@ -85,12 +99,17 @@ jobs:
           ls -la src-tauri/target/release/bundle || true
 
       - name: "macOS: Notarize DMG (if API key present)"
-        if: ${{ matrix.os == 'macos-latest' && secrets.APPLE_API_KEY }}
+        if: ${{ matrix.os == 'macos-latest' }}
         env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
           set -e
+          if [ -z "$APPLE_API_KEY" ]; then
+            echo "No APPLE_API_KEY configured — skipping notarization step"
+            exit 0
+          fi
           echo "Notarization step beginning (using Apple API Key)..."
           # Decode API key
           echo "$APPLE_API_KEY" | base64 --decode > /tmp/AuthKey_${APPLE_API_KEY_ID}.p8
@@ -145,8 +164,19 @@ jobs:
           files: artifacts/**
 
       - name: Notarize macOS artifact (if APPLE credentials present)
-        if: ${{ secrets.APPLE_API_KEY || (secrets.APPLE_ID && secrets.APPLE_APP_SPECIFIC_PASSWORD) }}
+        # run on publish job but perform credential checks inside the step to avoid workflow validation errors
+        if: ${{ always() }}
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: |
+          if [ -z "$APPLE_API_KEY" -a -z "$APPLE_ID" ]; then
+            echo "No Apple notarization credentials found — skipping notarization"
+            exit 0
+          fi
           echo "Notarization step requested. This workflow detects credentials and would submit the built macOS DMG for notarization if present."
           # This step assumes the DMG is available in artifacts/ from the matrix jobs and runner has xcrun available.
           # Use APPLE_API_KEY (base64 .p8), APPLE_API_KEY_ID, APPLE_API_ISSUER for notarytool, or APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD for altool.
