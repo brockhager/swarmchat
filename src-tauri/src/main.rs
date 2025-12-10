@@ -34,14 +34,15 @@ fn start_dendrite_sidecar(app_handle: tauri::AppHandle, state: &tauri::State<Sid
   // We'll run the sidecar in a background thread so the main runtime is not blocked.
   let handle = app_handle.clone();
 
-  // Use an Arc/Mutex so we can later extend the code to store the child handle if needed.
-  // Store the child in the managed `SidecarState` so other hooks can access it.
-
   spawn(async move {
     // Spawn a blocking thread to run the sidecar and read its output using blocking IO.
     let handle_for_thread = handle.clone();
+    let state_handle = handle.clone();
 
     thread::spawn(move || {
+      // Get state from the handle inside the thread
+      let state = state_handle.state::<SidecarState>();
+      
       // Determine sidecar path: prefer the bundled resource, otherwise fall back to PATH (dev mode)
       let maybe_resource = handle_for_thread.path().resource_dir().ok();
 
@@ -105,8 +106,9 @@ fn start_dendrite_sidecar(app_handle: tauri::AppHandle, state: &tauri::State<Sid
 
       // Spawn a watcher thread that polls for child exit using try_wait and clears state when done
       {
-        let state_for_watcher = state.clone();
+        let watcher_handle = state_handle.clone();
         thread::spawn(move || {
+          let state_for_watcher = watcher_handle.state::<SidecarState>();
           loop {
             // Check whether the child has exited
             if let Ok(mut guard) = state_for_watcher.child.lock() {
@@ -140,7 +142,9 @@ fn start_dendrite_sidecar(app_handle: tauri::AppHandle, state: &tauri::State<Sid
 
       if let Some(out) = stdout_handle {
         let handle = handle_for_thread.clone();
+        let stdout_state_handle = state_handle.clone();
         thread::spawn(move || {
+          let state = stdout_state_handle.state::<SidecarState>();
           let reader = BufReader::new(out);
           for line in reader.lines().flatten() {
             // Print to host stdout and also emit an event to the webview (optional)
@@ -166,7 +170,9 @@ fn start_dendrite_sidecar(app_handle: tauri::AppHandle, state: &tauri::State<Sid
       // Read stderr
       if let Some(err) = stderr_handle {
         let handle = handle_for_thread.clone();
+        let stderr_state_handle = state_handle.clone();
         thread::spawn(move || {
+          let state = stderr_state_handle.state::<SidecarState>();
           let reader = BufReader::new(err);
           for line in reader.lines().flatten() {
             eprintln!("[dendrite stderr] {}", line);
