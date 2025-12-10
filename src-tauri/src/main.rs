@@ -47,7 +47,7 @@ fn start_dendrite_sidecar(app_handle: tauri::AppHandle, state: &tauri::State<Sid
       // Determine sidecar path: prefer the bundled resource, otherwise fall back to PATH (dev mode)
       let maybe_resource = handle_for_thread.path().resource_dir().ok();
 
-      let mut dendrite_path = maybe_resource
+      let dendrite_path = maybe_resource
         .map(|p| {
           // typical Tauri sidecar layout is resources/sidecar/<name> or resources/<name>
           // try both
@@ -351,23 +351,9 @@ fn main() {
     .setup(|app| {
       println!("[main] Setup hook called");
       
-      // Create main window if none exists
-      if app.windows().is_empty() {
-        println!("[main] No windows found, creating main window");
-        match tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::default())
-          .title("SwarmChat")
-          .inner_size(1200.0, 800.0)
-          .build()
-        {
-          Ok(window) => println!("[main] Main window created successfully"),
-          Err(e) => {
-            eprintln!("[main] Failed to create main window: {}", e);
-            return Err(e.into());
-          }
-        }
-      } else {
-        println!("[main] Found {} existing windows", app.windows().len());
-      }
+      // Tauri v2 automatically creates the window defined in tauri.conf.json
+      // Just log that setup is running
+      println!("[main] Window will be created from tauri.conf.json configuration");
       
       // Start dendrite sidecar when the Tauri app starts
       println!("[main] Starting dendrite sidecar...");
