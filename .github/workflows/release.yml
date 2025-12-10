@@ -98,6 +98,7 @@ jobs:
               ;;
           esac
       - name: Verify injected sidecar (metadata + checksum)
+        shell: bash
         run: |
           echo "Verifying sidecar metadata and checksum"
           case "${{ matrix.os }}" in
