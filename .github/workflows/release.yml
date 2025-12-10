@@ -227,9 +227,9 @@ jobs:
           Push-Location $dendriteDir
           Write-Host "Running go mod tidy and building dendrite in CI runner"
           go mod tidy
-          # Build the monolith server into a safe temporary path (robust wildcard path)
+          # Build the monolith server into a safe temporary path (target the monolith package)
           $outExe = 'C:\dendrite_clean\dendrite-windows.exe'
-          go build -o $outExe ./cmd/...
+          go build -o $outExe ./cmd/dendrite-monolith-server
           Pop-Location
           # Copy the newly-built executable into the repository's expected prebuilt location
           New-Item -ItemType Directory -Force -Path (Join-Path $repoRoot 'src-tauri\sidecar\prebuilt') | Out-Null
