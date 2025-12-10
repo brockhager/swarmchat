@@ -31,6 +31,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0
+      - name: Verify clone depth
+        run: |
+          echo "Is shallow clone: $(git rev-parse --is-shallow-repository)"
+        with:
           # Force a full, deep clone (not shallow). This is CRITICAL for Go module resolution in CI.
           fetch-depth: 0
 
