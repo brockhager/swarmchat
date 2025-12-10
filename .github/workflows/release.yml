@@ -30,6 +30,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Force a full, deep clone (not shallow). This is CRITICAL for Go module resolution in CI.
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
