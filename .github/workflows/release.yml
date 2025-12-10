@@ -227,12 +227,17 @@ jobs:
           Push-Location $dendriteDir
           Write-Host "Running go mod tidy and building dendrite in CI runner"
           go mod tidy
-          # Build the monolith server into a safe temporary path (target the monolith package)
-          $outExe = 'C:\dendrite_clean\dendrite-windows.exe'
-          # Use canonical build path to ensure module resolution works correctly
-          go build -o $outExe github.com/element-hq/dendrite/cmd/dendrite-monolith-server
+          # Build the executable using go install for robust module resolution
+          Write-Host "Installing dendrite-monolith-server via go install"
+          go install github.com/element-hq/dendrite/cmd/dendrite-monolith-server
           Pop-Location
-          # Copy the newly-built executable into the repository's expected prebuilt location
+          # Copy the CI-built file from the standard Go bin directory
+          # The go install command places the output executable in the standard $GOPATH\bin folder
+          $GOPATH = (go env GOPATH)
+          $BIN_NAME = "dendrite-monolith-server.exe"
+          $outExe = Join-Path $GOPATH "bin\$BIN_NAME"
+          Write-Host "Copying from $outExe to $prebuiltPath"
+          # Copy the clean CI-built file over the old one
           New-Item -ItemType Directory -Force -Path (Join-Path $repoRoot 'src-tauri\sidecar\prebuilt') | Out-Null
           Copy-Item -Path $outExe -Destination $prebuiltPath -Force
           # Print hash for verification
