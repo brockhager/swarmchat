@@ -1,34 +1,31 @@
 {
-  "package": {
-    "productName": "SwarmChat",
-    "version": "0.0.0"
-  },
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "SwarmChat",
+  "version": "0.1.0",
+  "identifier": "com.example.swarmchat",
   "build": {
     "beforeDevCommand": "",
+    "devUrl": "../public",
     "beforeBuildCommand": "",
-    "devPath": "../public",
-    "distDir": "../public"
+    "frontendDist": "../public"
   },
-
-  "tauri": {
-
-    "bundle": {
-      "identifier": "com.example.swarmchat",
-      "active": true,
-      "targets": ["nsis"],
-      "resources": [
-        "sidecar/dendrite",
-        "sidecar/dendrite.exe"
-      ],
-      "windows": {
-        "digestAlgorithm": "sha256",
-        "certificateThumbprint": ""
-      }
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "resources": {
+      "resources/sidecar/dendrite": "./",
+      "resources/sidecar/dendrite.exe": "./"
     },
-    "allowlist": {
-      "all": true
-    },
+    "windows": {
+      "digestAlgorithm": "sha256",
+      "certificateThumbprint": null
+    }
+  },
+  "app": {
     "windows": [],
-    "updater": { "active": false }
-  }
+    "security": {
+      "csp": null
+    }
+  },
+  "plugins": {}
 }
