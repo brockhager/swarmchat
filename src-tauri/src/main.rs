@@ -7,7 +7,7 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
-use tauri::{async_runtime::spawn, Manager};
+use tauri::{async_runtime::spawn, Emitter, Manager};
 use serde::Serialize;
 use std::time::SystemTime;
 
