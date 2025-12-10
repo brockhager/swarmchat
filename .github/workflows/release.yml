@@ -227,36 +227,21 @@ jobs:
           if (Test-Path $prebuiltPath) { Remove-Item -Force $prebuiltPath }
           # Clone a clean Dendrite source to a temporary runner path and build it
           $cloneRoot = 'C:\dendrite_clean'
-          if (Test-Path $cloneRoot) { Remove-Item -Recurse -Force $cloneRoot }
+          # Remove any existing directory, then create a clean folder
+          Remove-Item -Recurse -Force $cloneRoot -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $cloneRoot | Out-Null
-          git clone https://github.com/element-hq/dendrite.git $cloneRoot
-          # Determine the project root for dendrite build (look for go.mod)
-          Push-Location $cloneRoot
-          $dirs = Get-ChildItem -Directory | Select-Object -ExpandProperty FullName
-          Write-Host "Cloned directories in ${cloneRoot}: $dirs"
-          if (Test-Path (Join-Path $cloneRoot 'go.mod')) {
-            Write-Host "go.mod found in clone root ($cloneRoot); building from root"
-            $projectRoot = $cloneRoot
-          } else {
-            $projectRoot = $null
-            foreach ($d in $dirs) {
-              if (Test-Path (Join-Path $d 'go.mod')) { $projectRoot = $d; break }
-            }
-            if ($projectRoot) {
-              Write-Host "Found go.mod in subdirectory: $projectRoot; using as project root"
-              Push-Location $projectRoot
-            } else {
-              Write-Host "No go.mod found in clone; defaulting to clone root ($cloneRoot)"
-              $projectRoot = $cloneRoot
-            }
-          }
+          Write-Host "Cloning dendrite into $cloneRoot"
+          git clone --depth 1 https://github.com/element-hq/dendrite.git $cloneRoot
+          # Build from the explicit clone root (flat path) to avoid path confusion
+          Write-Host "Changing directory to $cloneRoot and building"
+          Set-Location $cloneRoot
           Write-Host "Current directory: $(Get-Location)"
           Write-Host "Running go mod tidy and building dendrite in CI runner"
           go mod tidy
-          # Build the executable using go install for robust module resolution
-          Write-Host "Installing dendrite-monolith-server via project-relative go install"
+          Write-Host "Installing dendrite-monolith-server via go install from repo root"
           go install ./cmd/dendrite-monolith-server
-          Pop-Location
+          # Return to the previous location for downstream steps
+          Set-Location $repoRoot
           # Copy the CI-built file from the standard Go bin directory
           # The go install command places the output executable in the standard $GOPATH\bin folder
           $GOPATH = (go env GOPATH)
