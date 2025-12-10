@@ -74,17 +74,9 @@ jobs:
           if [ -f "src-tauri/resources/sidecar/dendrite" ] || [ -f "src-tauri/resources/sidecar/dendrite.exe" ]; then
             HAS_SIDECAR=true
           fi
-          echo "has_sidecar=$HAS_SIDECAR" >> $GITHUB_OUTPUT
-
-      - name: Build front-end
-        run: npm run build || true
-
-      - name: Verbose Tauri build (capture logs)
-        # Run Tauri build only on Windows runners (we produce a single NSIS .exe installer)
-        if: ${{ matrix.os == 'windows-latest' && steps.prepare_sidecar.outputs.has_sidecar == 'true' }}
-        shell: pwsh
-        run: |
-          Write-Host "Running verbose Tauri build and saving logs to artifact"
+          uses: tauri-apps/tauri-action@action-v0.6.0
+          with:
+            release: true
           # Make sure the CLI is installed in the runner scope and capture full logs
           npm install -g @tauri-apps/cli@v1 || true
           $log = "tauri-build-output.txt"
