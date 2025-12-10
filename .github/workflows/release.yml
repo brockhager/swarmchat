@@ -217,6 +217,27 @@ jobs:
           echo "Checking artifacts for bundled dendrite files"
           if [ -d src-tauri/target/release/bundle ]; then
             # Find any file named dendrite* in the bundle output
+            # compute the prebuilt sha if present
+            PREBUILT_SHA=""
+            case "${{ matrix.os }}" in
+              windows-latest)
+                if [ -f src-tauri/sidecar/prebuilt/dendrite-windows.exe ]; then
+                  PREBUILT_SHA=$(pwsh -Command "(Get-FileHash -Path 'src-tauri/sidecar/prebuilt/dendrite-windows.exe' -Algorithm SHA256).Hash")
+                fi
+                ;;
+              macos-latest)
+                if [ -f src-tauri/sidecar/prebuilt/dendrite-macos ]; then
+                  PREBUILT_SHA=$(sha256sum src-tauri/sidecar/prebuilt/dendrite-macos 2>/dev/null | awk '{print $1}')
+                fi
+                ;;
+              ubuntu-latest)
+                if [ -f src-tauri/sidecar/prebuilt/dendrite-linux ]; then
+                  PREBUILT_SHA=$(sha256sum src-tauri/sidecar/prebuilt/dendrite-linux 2>/dev/null | awk '{print $1}')
+                fi
+                ;;
+              *) PREBUILT_SHA="" ;;
+            esac
+
             find src-tauri/target/release/bundle -type f -iname '*dendrite*' -print0 | while IFS= read -r -d '' file; do
               echo "Found packaged file: $file"
               if command -v sha256sum >/dev/null 2>&1; then
@@ -228,6 +249,26 @@ jobs:
               if [ -x "$file" ]; then
                 echo "Attempting to run $file --version (best-effort)"
                 timeout 5 "$file" --version || true
+              fi
+              # compute packaged sha
+              PACKAGED_SHA=""
+              if command -v sha256sum >/dev/null 2>&1; then
+                PACKAGED_SHA=$(sha256sum "$file" 2>/dev/null | awk '{print $1}' || true)
+              else
+                PACKAGED_SHA=$(openssl dgst -sha256 "$file" 2>/dev/null | awk '{print $2}' || true)
+              fi
+              echo "Packaged SHA: $PACKAGED_SHA"
+              if [ -n "$PREBUILT_SHA" ]; then
+                echo "Prebuilt SHA: $PREBUILT_SHA"
+                if [ "$PREBUILT_SHA" != "$PACKAGED_SHA" ]; then
+                  echo "ERROR: Prebuilt SHA does not match packaged SHA for $file" >&2
+                  echo "Please ensure the installer did not modify or corrupt the binary during packaging/extraction" >&2
+                  exit 1
+                else
+                  echo "OK: Prebuilt SHA matches packaged SHA for $file"
+                fi
+              else
+                echo "No prebuilt file to compare against for this OS; skipping SHA match check"
               fi
             done
           else
