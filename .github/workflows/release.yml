@@ -243,20 +243,21 @@ jobs:
           go env || true
           Write-Host "Running go mod tidy and building dendrite in CI runner"
           $tidyOut = go mod tidy 2>&1 ; if ($LASTEXITCODE -ne 0) { Write-Host "go mod tidy failed: $tidyOut" ; exit $LASTEXITCODE }
-          Write-Host "Installing dendrite-monolith-server via go install from repo root"
-          $installOut = & go install ./cmd/dendrite-monolith-server 2>&1 ; if ($LASTEXITCODE -ne 0) { Write-Host "go install failed: $installOut" ; exit $LASTEXITCODE }
-          Write-Host "go install completed. GOPATH = $(go env GOPATH)"
+          Write-Host "Building dendrite-monolith-server via go build from repo root"
+          $targetExe = Join-Path $cloneRoot "dendrite-windows.exe"
+          Write-Host "target exe: $targetExe"
+          $buildOut = & go build -v -o $targetExe ./cmd/dendrite-monolith-server 2>&1 ; if ($LASTEXITCODE -ne 0) { Write-Host "go build failed: $buildOut" ; exit $LASTEXITCODE }
+          Write-Host "go build completed. built exe: $targetExe"
+          Write-Host "Contents of cmd\dendrite-monolith-server folder:"
+          Get-ChildItem -Path (Join-Path $cloneRoot 'cmd\dendrite-monolith-server') -Force | Format-Table -AutoSize
+          if (!(Test-Path $targetExe)) { Write-Error "Build failed; $targetExe not found"; exit 1 }
+          Write-Host "Copying $targetExe to $prebuiltPath"
+          New-Item -ItemType Directory -Force -Path (Join-Path $repoRoot 'src-tauri\sidecar\prebuilt') | Out-Null
+          Copy-Item -Path $targetExe -Destination $prebuiltPath -Force
+          # Print hash for verification
+          Get-FileHash -Path $prebuiltPath -Algorithm SHA256 | Format-List
           # Return to the previous location for downstream steps
           Set-Location $repoRoot
-          # Copy the CI-built file from the standard Go bin directory
-          # The go install command places the output executable in the standard $GOPATH\bin folder
-          $GOPATH = (go env GOPATH)
-          $BIN_NAME = "dendrite-monolith-server.exe"
-          $outExe = Join-Path $GOPATH "bin\$BIN_NAME"
-          Write-Host "Copying from $outExe to $prebuiltPath"
-          # Copy the clean CI-built file over the old one
-          New-Item -ItemType Directory -Force -Path (Join-Path $repoRoot 'src-tauri\sidecar\prebuilt') | Out-Null
-          Copy-Item -Path $outExe -Destination $prebuiltPath -Force
           # Print hash for verification
           Write-Host "CI built dendrite SHA256:"; Get-FileHash -Path $prebuiltPath -Algorithm SHA256 | Format-List
 
