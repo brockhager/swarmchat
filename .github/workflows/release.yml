@@ -244,6 +244,8 @@ jobs:
           tag: ${{ github.ref_name }}
           artifacts: artifacts/**
           token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
+          updateOnlyUnreleased: false
 
       - name: Notarize macOS artifact (if APPLE credentials present)
         # run on publish job but perform credential checks inside the step to avoid workflow validation errors
