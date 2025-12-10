@@ -230,16 +230,25 @@ jobs:
           if (Test-Path $cloneRoot) { Remove-Item -Recurse -Force $cloneRoot }
           New-Item -ItemType Directory -Force -Path $cloneRoot | Out-Null
           git clone https://github.com/element-hq/dendrite.git $cloneRoot
-          # Discover actual folder name created by the clone
+          # Determine the project root for dendrite build (look for go.mod)
           Push-Location $cloneRoot
-          $dirs = Get-ChildItem -Directory | Select-Object -ExpandProperty Name
+          $dirs = Get-ChildItem -Directory | Select-Object -ExpandProperty FullName
           Write-Host "Cloned directories in ${cloneRoot}: $dirs"
-          if ($dirs -is [array]) { $sourceDir = $dirs[0] } else { $sourceDir = $dirs }
-          if ($sourceDir) {
-            Write-Host "Navigating to discovered source directory: $sourceDir"
-            Push-Location $sourceDir
+          if (Test-Path (Join-Path $cloneRoot 'go.mod')) {
+            Write-Host "go.mod found in clone root ($cloneRoot); building from root"
+            $projectRoot = $cloneRoot
           } else {
-            Write-Host "No subdirectory found, assuming flat clone structure"
+            $projectRoot = $null
+            foreach ($d in $dirs) {
+              if (Test-Path (Join-Path $d 'go.mod')) { $projectRoot = $d; break }
+            }
+            if ($projectRoot) {
+              Write-Host "Found go.mod in subdirectory: $projectRoot; using as project root"
+              Push-Location $projectRoot
+            } else {
+              Write-Host "No go.mod found in clone; defaulting to clone root ($cloneRoot)"
+              $projectRoot = $cloneRoot
+            }
           }
           Write-Host "Current directory: $(Get-Location)"
           Write-Host "Running go mod tidy and building dendrite in CI runner"
