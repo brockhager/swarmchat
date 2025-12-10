@@ -246,7 +246,10 @@ jobs:
           Write-Host "Building dendrite-monolith-server via go build from repo root"
           $targetExe = Join-Path $cloneRoot "dendrite-windows.exe"
           Write-Host "target exe: $targetExe"
-          $buildOut = & go build -v -o $targetExe ./cmd/dendrite-monolith-server 2>&1 ; if ($LASTEXITCODE -ne 0) { Write-Host "go build failed: $buildOut" ; exit $LASTEXITCODE }
+          $packagePath = Join-Path $cloneRoot 'cmd\dendrite-monolith-server'
+          Write-Host "Building package from absolute path: $packagePath"
+          Get-ChildItem -Path $packagePath -Force | Format-Table -AutoSize
+          $buildOut = & go build -v -o $targetExe $packagePath 2>&1 ; if ($LASTEXITCODE -ne 0) { Write-Host "go build failed: $buildOut" ; exit $LASTEXITCODE }
           Write-Host "go build completed. built exe: $targetExe"
           Write-Host "Contents of cmd\dendrite-monolith-server folder:"
           Get-ChildItem -Path (Join-Path $cloneRoot 'cmd\dendrite-monolith-server') -Force | Format-Table -AutoSize
