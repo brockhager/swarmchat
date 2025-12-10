@@ -43,56 +43,69 @@ jobs:
         id: prepare_sidecar
         shell: bash
         run: |
-          echo "Preparing sidecar for runner: $RUNNER_OS"
-          # If SIDECAR_URL is present (set via repo secret), download the prebuilt binary into prebuilt/
-          if [ -n "$SIDECAR_URL" ]; then
-            echo "SIDECAR_URL set — attempting download into src-tauri/sidecar/prebuilt"
-            mkdir -p src-tauri/sidecar/prebuilt
-            case "$RUNNER_OS" in
-              Windows)
-                echo "Downloading Windows sidecar to src-tauri/sidecar/prebuilt/dendrite-windows.exe"
-                pwsh -Command "try { Invoke-WebRequest -Uri '$SIDECAR_URL' -OutFile 'src-tauri/sidecar/prebuilt/dendrite-windows.exe' -UseBasicParsing } catch { Write-Host 'Download failed'; exit 0 }" || true
-                ;;
-              Linux)
-                curl -L -o src-tauri/sidecar/prebuilt/dendrite-linux "$SIDECAR_URL" || true
-                ;;
-              macOS)
-                curl -L -o src-tauri/sidecar/prebuilt/dendrite-macos "$SIDECAR_URL" || true
-                ;;
-            esac
-          fi
-        
+          echo "Preparing sidecar for runner: $RUNNER_OS (matrix: ${{ matrix.os }})"
+          # create directories we will use
+          mkdir -p src-tauri/sidecar/prebuilt src-tauri/resources/sidecar
 
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # Use pwsh from bash to run the PS1 helper on Windows
-            pwsh -Command "& './scripts/ci-copy-sidecar.ps1' -Target windows" || true
+          # If a SIDECAR_URL is configured, attempt to download a platform-appropriate prebuilt into prebuilt/
+          if [ -n "$SIDECAR_URL" ]; then
+            echo "SIDECAR_URL present — trying to download into src-tauri/sidecar/prebuilt"
+            if [ "${{ matrix.os }}" = "windows-latest" ]; then
+              # On windows runner use PowerShell to download so we keep the .exe name
+              pwsh -Command "try { Invoke-WebRequest -Uri '$SIDECAR_URL' -OutFile 'src-tauri/sidecar/prebuilt/dendrite-windows.exe' } catch { Write-Host 'Download failed' ; exit 0 }" || true
+            elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+              curl -L -s -f -o src-tauri/sidecar/prebuilt/dendrite-macos "$SIDECAR_URL" || true
+            else
+              curl -L -s -f -o src-tauri/sidecar/prebuilt/dendrite-linux "$SIDECAR_URL" || true
+            fi
           else
-            bash ./scripts/ci-copy-sidecar.sh ${{ matrix.os }} || true
+            echo "No SIDECAR_URL set — skipping download"
           fi
-          # Check if a sidecar binary was placed in resources
-          HAS_SIDECAR=false
-          if [ -f "src-tauri/resources/sidecar/dendrite" ] || [ -f "src-tauri/resources/sidecar/dendrite.exe" ]; then
-            HAS_SIDECAR=true
-          fi
-          uses: tauri-apps/tauri-action@action-v0.6.0
-          with:
-            release: true
-          # Make sure the CLI is installed in the runner scope and capture full logs
-          npm install -g @tauri-apps/cli@v1 || true
-          $log = "tauri-build-output.txt"
-          # Run the CLI with verbose output and capture it.
-            try {
-            # npx passes extra args to npm scripts; use '-- --release' so the flag is forwarded to the tauri CLI
-            npx @tauri-apps/cli@latest build -- --release 2>&1 | Tee-Object -FilePath $log
-            $exit = $LASTEXITCODE
-          } catch {
-            $_ | Out-File -FilePath $log -Append
-            $exit = 1
-          }
-          if ($exit -ne 0) { Write-Host "tauri build exited $exit" }
-          # always create an artifacts directory so we can upload logs
-          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          Move-Item -Force $log artifacts\$log
+
+          # Copy available prebuilt for the current matrix target into resources/sidecar and set the output
+          case "${{ matrix.os }}" in
+            windows-latest)
+              if [ -f src-tauri/sidecar/prebuilt/dendrite-windows.exe ]; then
+                cp src-tauri/sidecar/prebuilt/dendrite-windows.exe src-tauri/resources/sidecar/dendrite.exe
+                echo "has_sidecar=true" >> $GITHUB_OUTPUT
+              else
+                echo "No windows prebuilt found — continuing without sidecar"
+                echo "has_sidecar=false" >> $GITHUB_OUTPUT
+              fi
+              ;;
+            macos-latest)
+              if [ -f src-tauri/sidecar/prebuilt/dendrite-macos ]; then
+                cp src-tauri/sidecar/prebuilt/dendrite-macos src-tauri/resources/sidecar/dendrite
+                chmod +x src-tauri/resources/sidecar/dendrite || true
+                echo "has_sidecar=true" >> $GITHUB_OUTPUT
+              else
+                echo "No mac prebuilt found — continuing without sidecar"
+                echo "has_sidecar=false" >> $GITHUB_OUTPUT
+              fi
+              ;;
+            ubuntu-latest)
+              if [ -f src-tauri/sidecar/prebuilt/dendrite-linux ]; then
+                cp src-tauri/sidecar/prebuilt/dendrite-linux src-tauri/resources/sidecar/dendrite
+                chmod +x src-tauri/resources/sidecar/dendrite || true
+                echo "has_sidecar=true" >> $GITHUB_OUTPUT
+              else
+                echo "No linux prebuilt found — continuing without sidecar"
+                echo "has_sidecar=false" >> $GITHUB_OUTPUT
+              fi
+              ;;
+            *)
+              echo "Unknown matrix.os; setting has_sidecar=false" >> $GITHUB_OUTPUT
+              ;;
+          esac
+      - name: Build front-end
+        run: npm run build || true
+
+      - name: Tauri build
+        # Run Tauri build only on Windows runners (we produce a single NSIS .exe installer)
+        if: ${{ matrix.os == 'windows-latest' && steps.prepare_sidecar.outputs.has_sidecar == 'true' }}
+        uses: tauri-apps/tauri-action@action-v0.6.0
+        with:
+          release: true
 
       - name: "macOS: import signing certificate to keychain (if present)"
         if: ${{ matrix.os == 'macos-latest' }}
