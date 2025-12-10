@@ -12,10 +12,7 @@ SwarmChat is distributed as a single small installer for each platform: a `.dmg`
 
 ### Download installers (v0.1.6)
 
-If you want to download installers immediately, here are the current v0.1.6 installers (placeholders for demo/testing):
-
-- Windows EXE (placeholder): [SwarmChat-0.1.6-setup.exe](https://raw.githubusercontent.com/brockhager/swarmchat/main/releases/SwarmChat-0.1.6-setup.exe)
-- Windows MSI (placeholder): [SwarmChat-0.1.6-setup.msi](https://raw.githubusercontent.com/brockhager/swarmchat/main/releases/SwarmChat-0.1.6-setup.msi)
+If you want to download installers immediately, go to latest release page. 
 
 > NOTE: These files are temporary placeholder installers in the repo for immediate downloads and are not functional installers. To generate fully working installers that include the real Dendrite sidecar, please provide the real Windows sidecar binary (dendrite.exe) or configure CI to fetch it (repo secret `SIDECAR_URL`).
 
