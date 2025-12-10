@@ -236,10 +236,16 @@ jobs:
           Write-Host "Changing directory to $cloneRoot and building"
           Set-Location $cloneRoot
           Write-Host "Current directory: $(Get-Location)"
+          Write-Host "Contents of $cloneRoot (top-level):"
+          Get-ChildItem -Path $cloneRoot -Force | Format-Table -AutoSize
+          Write-Host "Running go version and go env for debugging"
+          go version || true
+          go env || true
           Write-Host "Running go mod tidy and building dendrite in CI runner"
-          go mod tidy
+          $tidyOut = go mod tidy 2>&1 ; if ($LASTEXITCODE -ne 0) { Write-Host "go mod tidy failed: $tidyOut" ; exit $LASTEXITCODE }
           Write-Host "Installing dendrite-monolith-server via go install from repo root"
-          go install ./cmd/dendrite-monolith-server
+          $installOut = & go install ./cmd/dendrite-monolith-server 2>&1 ; if ($LASTEXITCODE -ne 0) { Write-Host "go install failed: $installOut" ; exit $LASTEXITCODE }
+          Write-Host "go install completed. GOPATH = $(go env GOPATH)"
           # Return to the previous location for downstream steps
           Set-Location $repoRoot
           # Copy the CI-built file from the standard Go bin directory
