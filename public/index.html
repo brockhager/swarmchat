@@ -5,14 +5,138 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SwarmChat</title>
     <style>
-      body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial; padding: 24px; }
-      h1 { color: #0b6cf3; }
-      .note { color: #666; margin-top: 8px }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        padding: 20px;
+      }
+      .container {
+        text-align: center;
+        max-width: 600px;
+      }
+      h1 {
+        font-size: 3em;
+        margin-bottom: 20px;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+      }
+      p {
+        font-size: 1.2em;
+        margin-bottom: 30px;
+        opacity: 0.9;
+      }
+      .status {
+        background: rgba(255,255,255,0.1);
+        padding: 20px;
+        border-radius: 10px;
+        backdrop-filter: blur(10px);
+        margin-top: 30px;
+      }
+      .loading {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 3px solid rgba(255,255,255,0.3);
+        border-radius: 50%;
+        border-top-color: #fff;
+        animation: spin 1s ease-in-out infinite;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      .button {
+        display: inline-block;
+        padding: 15px 30px;
+        background: rgba(255,255,255,0.2);
+        color: #fff;
+        text-decoration: none;
+        border-radius: 8px;
+        font-size: 1.1em;
+        margin: 10px;
+        transition: background 0.3s;
+        border: 2px solid rgba(255,255,255,0.3);
+        cursor: pointer;
+      }
+      .button:hover {
+        background: rgba(255,255,255,0.3);
+      }
+      .info {
+        margin-top: 20px;
+        font-size: 0.9em;
+        opacity: 0.8;
+      }
     </style>
   </head>
   <body>
-    <h1>SwarmChat</h1>
-    <p class="note">This is a minimal packaged UI used for CI/installer testing. Replace with the full web UI for production builds.</p>
-    <p>If the app launches correctly you should see the Tauri window and the local Dendrite sidecar can be started from the NodeControl in the app UI.</p>
+    <div class="container">
+      <h1>🐝 SwarmChat</h1>
+      <p>Decentralized Matrix Chat</p>
+      
+      <div class="status">
+        <div class="loading"></div>
+        <p style="margin-top: 15px;">Dendrite server starting...</p>
+        <p class="info" id="status-info">Initializing Matrix homeserver</p>
+      </div>
+
+      <div style="margin-top: 30px;">
+        <button class="button" onclick="openChat()">Open Chat in Browser</button>
+        <button class="button" onclick="checkStatus()">Check Status</button>
+      </div>
+    </div>
+
+    <script>
+      let dendritePort = null;
+      
+      async function checkStatus() {
+        try {
+          const status = await window.__TAURI__.core.invoke('status_dendrite');
+          const info = document.getElementById('status-info');
+          if (status.state === 'running') {
+            if (status.client_port) {
+              dendritePort = status.client_port;
+              info.innerHTML = `✅ Dendrite running on port ${status.client_port}<br>PID: ${status.pid}`;
+            } else {
+              info.innerHTML = `⚙️ Dendrite running (PID: ${status.pid})<br>Waiting for port detection...`;
+            }
+          } else {
+            info.innerHTML = `❌ Dendrite not running<br>${status.error_message || 'No error details'}`;
+          }
+        } catch (e) {
+          document.getElementById('status-info').innerHTML = `❌ Error: ${e}`;
+        }
+      }
+
+      function openChat() {
+        const port = dendritePort || 8008;
+        const url = `http://localhost:${port}`;
+        window.__TAURI__.shell.open(url).catch(err => {
+          alert(`Failed to open browser: ${err}`);
+        });
+      }
+
+      // Auto-open browser when port is detected
+      if (window.__TAURI__) {
+        window.__TAURI__.event.listen('dendrite-port-detected', (event) => {
+          dendritePort = event.payload;
+          document.getElementById('status-info').innerHTML = `✅ Dendrite ready on port ${dendritePort}`;
+          setTimeout(() => {
+            openChat();
+          }, 1000);
+        });
+
+        // Update status every 2 seconds
+        setInterval(checkStatus, 2000);
+        checkStatus();
+      }
+    </script>
   </body>
 </html>

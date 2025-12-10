@@ -25,10 +25,20 @@
     }
   },
   "app": {
-    "windows": [],
+    "windows": [
+      {
+        "title": "SwarmChat",
+        "width": 1200,
+        "height": 800
+      }
+    ],
     "security": {
       "csp": null
     }
   },
-  "plugins": {}
+  "plugins": {
+    "shell": {
+      "open": true
+    }
+  }
 }
