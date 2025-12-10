@@ -47,23 +47,46 @@ fn start_dendrite_sidecar(app_handle: tauri::AppHandle, state: &tauri::State<Sid
       // Determine sidecar path: prefer the bundled resource, otherwise fall back to PATH (dev mode)
       let maybe_resource = handle_for_thread.path().resource_dir().ok();
 
-      let dendrite_path = maybe_resource
-        .map(|p| {
-          // typical Tauri sidecar layout is resources/sidecar/<name> or resources/<name>
-          // try both
-          let mut p1 = p.join("sidecar").join("dendrite");
-          if cfg!(windows) {
-            p1.set_extension("exe");
-          }
-          if p1.exists() { return p1; }
+      let dendrite_path = maybe_resource.map(|p| {
+        // Build candidate paths in order of preference for bundled executables.
+        // This supports both files placed directly under resources/sidecar/ and
+        // CI or developer layouts that put them under sidecar/prebuilt/.
+        let mut candidates: Vec<PathBuf> = Vec::new();
 
-          let mut p2 = p.join("dendrite");
-          if cfg!(windows) {
-            p2.set_extension("exe");
+        if cfg!(windows) {
+          candidates.push(p.join("sidecar").join("dendrite.exe"));
+          candidates.push(p.join("sidecar").join("dendrite-windows.exe"));
+          candidates.push(p.join("sidecar").join("prebuilt").join("dendrite-windows.exe"));
+        } else if cfg!(target_os = "macos") {
+          candidates.push(p.join("sidecar").join("dendrite"));
+          candidates.push(p.join("sidecar").join("dendrite-macos"));
+          candidates.push(p.join("sidecar").join("prebuilt").join("dendrite-macos"));
+        } else {
+          // Assume linux/unix
+          candidates.push(p.join("sidecar").join("dendrite"));
+          candidates.push(p.join("sidecar").join("dendrite-linux"));
+          candidates.push(p.join("sidecar").join("prebuilt").join("dendrite-linux"));
+        }
+
+        // Also try resources/dendrite
+        if cfg!(windows) {
+          candidates.push(p.join("dendrite.exe"));
+        } else {
+          candidates.push(p.join("dendrite"));
+        }
+
+        // Return the first candidate that exists, or fallback to 'dendrite' (PATH).
+        for c in candidates.into_iter() {
+          println!("[sidecar] checking candidate path: {:?}", c);
+          if c.exists() {
+            println!("[sidecar] using bundled sidecar at {:?}", c);
+            return c;
           }
-          p2
-        })
-        .unwrap_or_else(|| PathBuf::from("dendrite"));
+        }
+        // No resource found — return a plain PATH lookup to `dendrite` so developers
+        // can run the local `dendrite` from their PATH during dev/testing
+        if cfg!(windows) { PathBuf::from("dendrite.exe") } else { PathBuf::from("dendrite") }
+      }).unwrap_or_else(|| PathBuf::from("dendrite"));
 
       // If the path isn't an absolute/bundled path, we'll attempt to run simply "dendrite" from PATH
       let final_path = if dendrite_path.exists() { dendrite_path } else { PathBuf::from("dendrite") };

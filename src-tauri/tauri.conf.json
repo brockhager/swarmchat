@@ -17,7 +17,9 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "resources/sidecar/*"
+      "resources/sidecar/*",
+      "sidecar/*",
+      "sidecar/prebuilt/*"
     ],
     "windows": {
       "digestAlgorithm": "sha256",
