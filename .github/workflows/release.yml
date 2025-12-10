@@ -226,10 +226,22 @@ jobs:
           # Remove the prebuilt file if present to ensure we use a runner-built binary
           if (Test-Path $prebuiltPath) { Remove-Item -Force $prebuiltPath }
           # Clone a clean Dendrite source to a temporary runner path and build it
-          $dendriteDir = 'C:\dendrite_clean\dendrite'
-          if (Test-Path $dendriteDir) { Remove-Item -Recurse -Force $dendriteDir }
-          git clone https://github.com/element-hq/dendrite.git $dendriteDir
-          Push-Location $dendriteDir
+          $cloneRoot = 'C:\dendrite_clean'
+          if (Test-Path $cloneRoot) { Remove-Item -Recurse -Force $cloneRoot }
+          New-Item -ItemType Directory -Force -Path $cloneRoot | Out-Null
+          git clone https://github.com/element-hq/dendrite.git $cloneRoot
+          # Discover actual folder name created by the clone
+          Push-Location $cloneRoot
+          $dirs = Get-ChildItem -Directory | Select-Object -ExpandProperty Name
+          Write-Host "Cloned directories in ${cloneRoot}: $dirs"
+          if ($dirs -is [array]) { $sourceDir = $dirs[0] } else { $sourceDir = $dirs }
+          if ($sourceDir) {
+            Write-Host "Navigating to discovered source directory: $sourceDir"
+            Push-Location $sourceDir
+          } else {
+            Write-Host "No subdirectory found, assuming flat clone structure"
+          }
+          Write-Host "Current directory: $(Get-Location)"
           Write-Host "Running go mod tidy and building dendrite in CI runner"
           go mod tidy
           # Build the executable using go install for robust module resolution
