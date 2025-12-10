@@ -9,6 +9,8 @@ description = "Tauri sidecar host for SwarmChat"
 tauri = { version = "^2", features = [] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+sha2 = "0.10"
+hex = "0.4"
 
 [build-dependencies]
 tauri-build = "^2"

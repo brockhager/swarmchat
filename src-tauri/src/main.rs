@@ -1,7 +1,7 @@
 // Temporarily removed to see console logs for debugging
 // #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
@@ -11,6 +11,8 @@ use std::time::Duration;
 use tauri::{async_runtime::spawn, Emitter, Manager};
 use serde::Serialize;
 use std::time::SystemTime;
+use sha2::{Digest, Sha256};
+use hex::encode as hex_encode;
 
 /// Start the Dendrite binary as a sidecar and stream its stdout/stderr to the host logs.
 // Shared state kept in the Tauri App so we can control the sidecar lifecycle
@@ -96,8 +98,38 @@ fn start_dendrite_sidecar(app_handle: tauri::AppHandle, state: &tauri::State<Sid
       // If the path isn't an absolute/bundled path, we'll attempt to run simply "dendrite" from PATH
       let final_path = if dendrite_path.exists() { dendrite_path } else { PathBuf::from("dendrite") };
 
-      // Log the resolved path so developers know what we attempted to run
+      // Log the resolved path and compute file metadata and sha256 before attempting to spawn
       println!("[sidecar] starting dendrite from {:?}", final_path);
+      match std::fs::metadata(&final_path) {
+        Ok(meta) => {
+          println!("[sidecar] candidate file size: {} bytes", meta.len());
+          if let Ok(mtime) = meta.modified() {
+            if let Ok(duration) = mtime.elapsed() {
+              println!("[sidecar] candidate last modified: {} seconds ago", duration.as_secs());
+            }
+          }
+        }
+        Err(e) => {
+          println!("[sidecar] candidate metadata access error: {}", e);
+        }
+      }
+      // Try to compute a sha256 checksum for diagnostic purposes; do not fail if unreadable
+      match std::fs::File::open(&final_path) {
+        Ok(mut f) => {
+          let mut buf = Vec::new();
+          if let Err(e) = f.read_to_end(&mut buf) {
+            println!("[sidecar] failed to read full file for checksum: {}", e);
+          } else {
+            let mut hasher = Sha256::new();
+            hasher.update(&buf);
+            let digest = hasher.finalize();
+            println!("[sidecar] candidate sha256: {}", hex_encode(digest));
+          }
+        }
+        Err(e) => {
+          println!("[sidecar] candidate open/read error (pre-spawn): {}", e);
+        }
+      }
 
       let mut cmd = Command::new(final_path.as_os_str());
       // Example args - change as needed for your dendrite configuration or make them configurable.
@@ -108,7 +140,15 @@ fn start_dendrite_sidecar(app_handle: tauri::AppHandle, state: &tauri::State<Sid
       let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
-          eprintln!("[sidecar] failed to spawn dendrite: {}", e);
+          // Provide more specific guidance for Windows os error 1392 (corrupted file / FS issues)
+          if let Some(1392) = e.raw_os_error() {
+            eprintln!(
+              "[sidecar] failed to spawn dendrite: {} (os error 1392). This indicates the file or directory appears corrupted or unreadable; please rebuild and re-copy the sidecar binary or check the host filesystem/antivirus.",
+              e
+            );
+          } else {
+            eprintln!("[sidecar] failed to spawn dendrite: {}", e);
+          }
           return;
         }
       };
