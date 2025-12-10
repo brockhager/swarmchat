@@ -12,10 +12,9 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "resources": {
-      "resources/sidecar/dendrite": "./",
-      "resources/sidecar/dendrite.exe": "./"
-    },
+    "resources": [
+      "resources/sidecar/*"
+    ],
     "windows": {
       "digestAlgorithm": "sha256",
       "certificateThumbprint": null
