@@ -229,7 +229,8 @@ jobs:
           go mod tidy
           # Build the monolith server into a safe temporary path (target the monolith package)
           $outExe = 'C:\dendrite_clean\dendrite-windows.exe'
-          go build -o $outExe ./cmd/dendrite-monolith-server
+          # Use canonical build path to ensure module resolution works correctly
+          go build -o $outExe github.com/element-hq/dendrite/cmd/dendrite-monolith-server
           Pop-Location
           # Copy the newly-built executable into the repository's expected prebuilt location
           New-Item -ItemType Directory -Force -Path (Join-Path $repoRoot 'src-tauri\sidecar\prebuilt') | Out-Null
