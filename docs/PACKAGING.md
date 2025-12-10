@@ -8,7 +8,8 @@ Key notes
 
 Recommended build steps (local)
 - Ensure you have installed the Tauri toolchain and native dependencies for your OS.
-- Place platform-specific Dendrite binary files into `src-tauri/resources/sidecar/` before building.
+- Place platform-specific Dendrite binary files into either `src-tauri/resources/sidecar/` or
+	`src-tauri/sidecar/` before building; CI scripts copy from `src-tauri/sidecar/prebuilt/` to `src-tauri/resources/sidecar/`.
 
 Example commands (macOS / Linux / Windows using npm script hooks):
 
@@ -21,7 +22,7 @@ npm run build
 ```
 
 Release checklist
-- Verify `src-tauri/tauri.conf.json` includes `resources": ["sidecar/dendrite"]` or the exact path used for your bundled sidecar.
+- Verify `src-tauri/tauri.conf.json` includes the sidecar paths you use, e.g. `resources": ["resources/sidecar/*", "sidecar/*", "sidecar/prebuilt/*"]` so prebuilt sidecars will be included regardless of placement.
 - Build on each target platform (or CI matrix) to ensure the sidecar exists and starts correctly. The app prints the resolved sidecar path on launch for diagnostics.
 - Test graceful shutdown sequences (CloseRequested) to ensure the sidecar process stops reliably.
 
