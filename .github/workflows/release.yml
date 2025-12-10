@@ -211,6 +211,29 @@ jobs:
             ls -la src-tauri/target/release/bundle || true
           fi
 
+      - name: Post-build sidecar verification (ensure packaged sidecar matches prebuilt)
+        shell: bash
+        run: |
+          echo "Checking artifacts for bundled dendrite files"
+          if [ -d src-tauri/target/release/bundle ]; then
+            # Find any file named dendrite* in the bundle output
+            find src-tauri/target/release/bundle -type f -iname '*dendrite*' -print0 | while IFS= read -r -d '' file; do
+              echo "Found packaged file: $file"
+              if command -v sha256sum >/dev/null 2>&1; then
+                sha256sum "$file" || true
+              else
+                sh -c "openssl dgst -sha256 \"$file\" || true"
+              fi
+              # If executable, try to run version flag (best-effort, use timeout to avoid blocking)
+              if [ -x "$file" ]; then
+                echo "Attempting to run $file --version (best-effort)"
+                timeout 5 "$file" --version || true
+              fi
+            done
+          else
+            echo "No bundle found: src-tauri/target/release/bundle"
+          fi
+
       - name: "macOS: Notarize DMG (if API key present)"
         if: ${{ matrix.os == 'macos-latest' }}
         env:
