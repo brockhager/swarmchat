@@ -226,7 +226,7 @@ jobs:
           # Clone a clean Dendrite source to a temporary runner path and build it
           $dendriteDir = 'C:\dendrite_clean\dendrite'
           if (Test-Path $dendriteDir) { Remove-Item -Recurse -Force $dendriteDir }
-          git clone --depth 1 https://github.com/element-hq/dendrite.git $dendriteDir
+          git clone https://github.com/element-hq/dendrite.git $dendriteDir
           Push-Location $dendriteDir
           Write-Host "Running go mod tidy and building dendrite in CI runner"
           go mod tidy
