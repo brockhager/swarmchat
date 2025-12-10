@@ -107,6 +107,8 @@ jobs:
         with:
           # ensure the action runs against the tauri project under src-tauri and uses the project's CLI if present
           projectPath: src-tauri
+          # Use npx to run the local @tauri-apps/cli v2 from node_modules (avoids global v1 CLI mismatch)
+          tauriScript: npx @tauri-apps/cli
           # let the action perform a release build (includeRelease defaults to true); avoid using unsupported `release` input
 
       - name: "macOS: import signing certificate to keychain (if present)"
