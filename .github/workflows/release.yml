@@ -106,18 +106,22 @@ jobs:
               if [ -f src-tauri/sidecar/prebuilt/dendrite-windows.exe ]; then
                 pwsh -Command "Get-Item -Path src-tauri/sidecar/prebuilt/dendrite-windows.exe | Format-List Name,Length,LastWriteTime"
                 pwsh -Command "Get-FileHash -Path src-tauri/sidecar/prebuilt/dendrite-windows.exe -Algorithm SHA256 | Format-List"
+                # Attempt to run the binary with --version to verify it is executable
+                pwsh -Command "try { & 'src-tauri/sidecar/prebuilt/dendrite-windows.exe' --version } catch { Write-Host 'Exe execution failed or returned non-zero' }"
               fi
               ;;
             macos-latest)
               if [ -f src-tauri/sidecar/prebuilt/dendrite-macos ]; then
                 ls -l src-tauri/sidecar/prebuilt/dendrite-macos
                 sh -c "sha256sum src-tauri/sidecar/prebuilt/dendrite-macos || true"
+                sh -c "src-tauri/sidecar/prebuilt/dendrite-macos --version || true"
               fi
               ;;
             ubuntu-latest)
               if [ -f src-tauri/sidecar/prebuilt/dendrite-linux ]; then
                 ls -l src-tauri/sidecar/prebuilt/dendrite-linux
                 sh -c "sha256sum src-tauri/sidecar/prebuilt/dendrite-linux || true"
+                sh -c "src-tauri/sidecar/prebuilt/dendrite-linux --version || true"
               fi
               ;;
             *)
