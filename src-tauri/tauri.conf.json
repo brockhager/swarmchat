@@ -5,7 +5,7 @@
   "identifier": "com.example.swarmchat",
   "build": {
     "beforeDevCommand": "",
-    "devUrl": "../public",
+    "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "",
     "frontendDist": "../public"
   },
