@@ -83,8 +83,13 @@ fn start_dendrite_sidecar(app_handle: tauri::AppHandle, state: &tauri::State<Sid
             return c;
           }
         }
-        // No resource found — return a plain PATH lookup to `dendrite` so developers
-        // can run the local `dendrite` from their PATH during dev/testing
+        // No resource found — list the directory for debugging then return a plain PATH lookup
+        if let Ok(mut entries) = std::fs::read_dir(&p) {
+          println!("[sidecar] resource dir contents ({:?}):", p);
+          while let Some(Ok(entry)) = entries.next() {
+            println!("[sidecar] - {:?}", entry.path());
+          }
+        }
         if cfg!(windows) { PathBuf::from("dendrite.exe") } else { PathBuf::from("dendrite") }
       }).unwrap_or_else(|| PathBuf::from("dendrite"));
 
