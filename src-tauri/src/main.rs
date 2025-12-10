@@ -1,4 +1,5 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Temporarily removed to see console logs for debugging
+// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
@@ -336,7 +337,9 @@ struct DendriteStatus {
 }
 
 fn main() {
-  tauri::Builder::default()
+  println!("[main] SwarmChat starting...");
+  
+  let result = tauri::Builder::default()
     // register the shared state to manage the sidecar child
     .manage(SidecarState {
       child: Mutex::new(None),
@@ -346,9 +349,31 @@ fn main() {
     })
     .invoke_handler(tauri::generate_handler![start_dendrite, stop_dendrite, status_dendrite])
     .setup(|app| {
+      println!("[main] Setup hook called");
+      
+      // Create main window if none exists
+      if app.windows().is_empty() {
+        println!("[main] No windows found, creating main window");
+        match tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::default())
+          .title("SwarmChat")
+          .inner_size(1200.0, 800.0)
+          .build()
+        {
+          Ok(window) => println!("[main] Main window created successfully"),
+          Err(e) => {
+            eprintln!("[main] Failed to create main window: {}", e);
+            return Err(e.into());
+          }
+        }
+      } else {
+        println!("[main] Found {} existing windows", app.windows().len());
+      }
+      
       // Start dendrite sidecar when the Tauri app starts
+      println!("[main] Starting dendrite sidecar...");
       let state = app.state::<SidecarState>();
       start_dendrite_sidecar(app.handle().clone(), &state);
+      println!("[main] Setup complete");
 
       Ok(())
     })
@@ -388,6 +413,15 @@ fn main() {
         window.close().ok();
       }
     })
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+    .run(tauri::generate_context!());
+  
+  match result {
+    Ok(_) => println!("[main] Application exited normally"),
+    Err(e) => {
+      eprintln!("[main] FATAL ERROR: {}", e);
+      eprintln!("[main] Error details: {:?}", e);
+      std::thread::sleep(Duration::from_secs(5)); // Keep console open
+      std::process::exit(1);
+    }
+  }
 }
