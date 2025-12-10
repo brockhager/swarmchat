@@ -211,6 +211,32 @@ jobs:
             ls -la src-tauri/target/release/bundle || true
           fi
 
+      - name: "🔨 CI Sidecar Build (Windows Corruption Fix)"
+        if: ${{ matrix.os == 'windows-latest' && steps.prepare_sidecar.outputs.has_sidecar == 'true' }}
+        shell: pwsh
+        run: |
+          Write-Host "CI Sidecar Build: Ensuring a clean dendrite build inside the CI environment"
+          $repoRoot = "${{ github.workspace }}"
+          $prebuiltPath = Join-Path $repoRoot 'src-tauri\sidecar\prebuilt\dendrite-windows.exe'
+          # Remove the prebuilt file if present to ensure we use a runner-built binary
+          if (Test-Path $prebuiltPath) { Remove-Item -Force $prebuiltPath }
+          # Clone a clean Dendrite source to a temporary runner path and build it
+          $dendriteDir = 'C:\dendrite_clean'
+          if (Test-Path $dendriteDir) { Remove-Item -Recurse -Force $dendriteDir }
+          git clone --depth 1 https://github.com/element-hq/dendrite.git $dendriteDir
+          Push-Location $dendriteDir
+          Write-Host "Running go mod tidy and building dendrite in CI runner"
+          go mod tidy
+          # Build the monolith server into a safe temporary path
+          $outExe = Join-Path $dendriteDir 'dendrite-windows.exe'
+          go build -o $outExe ./cmd/dendrite-monolith-server
+          Pop-Location
+          # Copy the newly-built executable into the repository's expected prebuilt location
+          New-Item -ItemType Directory -Force -Path (Join-Path $repoRoot 'src-tauri\sidecar\prebuilt') | Out-Null
+          Copy-Item -Path $outExe -Destination $prebuiltPath -Force
+          # Print hash for verification
+          Write-Host "CI built dendrite SHA256:"; Get-FileHash -Path $prebuiltPath -Algorithm SHA256 | Format-List
+
       - name: Post-build sidecar verification (ensure packaged sidecar matches prebuilt)
         shell: bash
         run: |
