@@ -89,8 +89,9 @@ jobs:
           npm install -g @tauri-apps/cli@v1 || true
           $log = "tauri-build-output.txt"
           # Run the CLI with verbose output and capture it.
-          try {
-            npx @tauri-apps/cli@latest build --release 2>&1 | Tee-Object -FilePath $log
+            try {
+            # npx passes extra args to npm scripts; use '-- --release' so the flag is forwarded to the tauri CLI
+            npx @tauri-apps/cli@latest build -- --release 2>&1 | Tee-Object -FilePath $log
             $exit = $LASTEXITCODE
           } catch {
             $_ | Out-File -FilePath $log -Append
