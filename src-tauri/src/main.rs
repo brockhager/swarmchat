@@ -3,7 +3,7 @@
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
@@ -43,7 +43,7 @@ fn start_dendrite_sidecar(app_handle: tauri::AppHandle, state: &tauri::State<Sid
 
     thread::spawn(move || {
       // Determine sidecar path: prefer the bundled resource, otherwise fall back to PATH (dev mode)
-      let maybe_resource = handle_for_thread.path_resolver().resource_dir();
+      let maybe_resource = handle_for_thread.path().resource_dir().ok();
 
       let mut dendrite_path = maybe_resource
         .map(|p| {
@@ -146,7 +146,7 @@ fn start_dendrite_sidecar(app_handle: tauri::AppHandle, state: &tauri::State<Sid
             // Print to host stdout and also emit an event to the webview (optional)
             println!("[dendrite stdout] {}", line);
             // If desired, the app can emit real-time events to the frontend:
-            let _ = handle.emit_all("dendrite-stdout", line.clone());
+            let _ = handle.emit("dendrite-stdout", line.clone());
 
             // Try to detect a port in common "listening" or "port" messages from the node
             // Very permissive: search for a numeric substring and treat it as a candidate port
@@ -154,7 +154,7 @@ fn start_dendrite_sidecar(app_handle: tauri::AppHandle, state: &tauri::State<Sid
               if guard.is_none() {
                 if let Some(port) = find_port_in_text(&line) {
                   *guard = Some(port);
-                  let _ = handle.emit_all("dendrite-port-detected", port);
+                  let _ = handle.emit("dendrite-port-detected", port);
                   println!("[sidecar] detected dendrite client port: {}", port);
                 }
               }
@@ -174,7 +174,7 @@ fn start_dendrite_sidecar(app_handle: tauri::AppHandle, state: &tauri::State<Sid
             if let Ok(mut guard) = state.last_error.lock() {
               *guard = Some(line.clone());
             }
-            let _ = handle.emit_all("dendrite-stderr", line.clone());
+            let _ = handle.emit("dendrite-stderr", line.clone());
           }
         });
       }
@@ -188,7 +188,7 @@ fn start_dendrite_sidecar(app_handle: tauri::AppHandle, state: &tauri::State<Sid
 #[tauri::command]
 fn stop_dendrite(state: tauri::State<SidecarState>) -> Result<String, String> {
   // take ownership of the child if present
-  let mut child_opt = match state.child.lock() {
+  let child_opt = match state.child.lock() {
     Ok(mut guard) => guard.take(),
     Err(e) => return Err(format!("failed to acquire sidecar lock: {}", e)),
   };
@@ -334,24 +334,27 @@ fn main() {
     // register the shared state to manage the sidecar child
     .manage(SidecarState {
       child: Mutex::new(None),
+      started_at: Mutex::new(None),
+      client_port: Mutex::new(None),
+      last_error: Mutex::new(None),
     })
     .invoke_handler(tauri::generate_handler![start_dendrite, stop_dendrite, status_dendrite])
     .setup(|app| {
       // Start dendrite sidecar when the Tauri app starts
       let state = app.state::<SidecarState>();
-      start_dendrite_sidecar(app.handle(), state);
+      start_dendrite_sidecar(app.handle().clone(), &state);
 
       Ok(())
     })
     // Attempt to gracefully stop the sidecar when windows request close
-    .on_window_event(|event| {
+    .on_window_event(|window, event| {
       use tauri::WindowEvent;
 
       // Access the app handle and sidecar state
-      let app = event.window().app_handle();
+      let app = window.app_handle();
       let state = app.state::<SidecarState>();
 
-      if let WindowEvent::CloseRequested { api, .. } = event.event() {
+      if let WindowEvent::CloseRequested { api, .. } = event {
         // Prevent default close for a moment while we attempt graceful shutdown
         api.prevent_close();
 
@@ -376,7 +379,7 @@ fn main() {
         // give the system a moment to settle, then allow the close to proceed
         std::thread::sleep(Duration::from_millis(250));
         // Now allow the window to close
-        event.window().close().ok();
+        window.close().ok();
       }
     })
     .run(tauri::generate_context!())
