@@ -249,7 +249,11 @@ jobs:
           $packagePath = Join-Path $cloneRoot 'cmd\dendrite-monolith-server'
           Write-Host "Building package from absolute path: $packagePath"
           Get-ChildItem -Path $packagePath -Force | Format-Table -AutoSize
-          $buildOut = & go build -v -o $targetExe $packagePath 2>&1 ; if ($LASTEXITCODE -ne 0) { Write-Host "go build failed: $buildOut" ; exit $LASTEXITCODE }
+          $mainFile = Join-Path $packagePath 'main.go'
+          Write-Host "Building main file: $mainFile"
+          if (!(Test-Path $mainFile)) { Write-Error "main.go not found at $mainFile"; exit 1 }
+          Get-Item -Path $mainFile | Format-List
+          $buildOut = & go build -v -o $targetExe $mainFile 2>&1 ; if ($LASTEXITCODE -ne 0) { Write-Host "go build failed: $buildOut" ; exit $LASTEXITCODE }
           Write-Host "go build completed. built exe: $targetExe"
           Write-Host "Contents of cmd\dendrite-monolith-server folder:"
           Get-ChildItem -Path (Join-Path $cloneRoot 'cmd\dendrite-monolith-server') -Force | Format-Table -AutoSize
